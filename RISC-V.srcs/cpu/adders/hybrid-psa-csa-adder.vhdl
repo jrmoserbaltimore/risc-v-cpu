@@ -1,0 +1,10 @@
+-- vim: sw=4 ts=4 et
+-- Hybrid parallel perefix and carry select adder
+--
+-- International Journal of Science, Engineering and Technology Research
+-- (IJSETR), Volume 4, Issue 9, September 2015
+--
+-- Design of High Speed and Low Power Adder by using Prefix Tree Structure
+-- by V.N. Sreeramulu
+--
+-- Maybe later.  Interesting for RV64I and RV128I
