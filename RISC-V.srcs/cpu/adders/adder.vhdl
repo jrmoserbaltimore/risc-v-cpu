@@ -62,3 +62,25 @@ entity e_binary_adder is
         Complete : out std_ulogic
     );
 end e_binary_adder;
+
+library IEEE;
+use IEEE.numeric_std.all;
+
+architecture fpga_binary_adder of e_binary_adder is
+begin
+    process(all) is
+        variable delay : natural := 0;
+    begin
+        if (rising_edge(Clk)) then
+            -- single-cycle
+            Complete <= Rst;
+            if (Rst = '1') then
+                if (Sub = '0') then
+                    S <= std_logic_vector(unsigned(A) + unsigned(B));
+                else
+                    S <= std_logic_vector(unsigned(A) - unsigned(B));
+                end if;
+            end if;
+        end if;
+    end process;
+end architecture fpga_binary_adder;

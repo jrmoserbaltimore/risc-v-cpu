@@ -1,7 +1,8 @@
 RISC-V Soft CPU
 ===============
 
-The RISC-V Soft CPU provides various CPU packages.
+This is a RISC-V soft CPU with various facilities, including different
+types of adders and multipliers for synthesizing different configurations.
 
 # RV32/64IM
 

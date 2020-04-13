@@ -1,6 +1,6 @@
 -- vim: sw=4 ts=4 et
 -- Addition/subtraction:
---  ADI[I]
+--  ADD[I]
 --  SUB
 
 library IEEE;
