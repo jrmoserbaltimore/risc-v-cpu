@@ -9,8 +9,9 @@ entity e_riscv_insn_3in is
     );
     port (
         clk  : in  std_ulogic;
-        -- Reset when giving new data, for multi-cycle
-        -- instructions
+        stb  : in  std_ulogic; 
+        busy : out std_ulogic;
+        -- Reset signal
         rst  : in  std_ulogic;
         -- rs1 and rs2, 
         rs1  : in  std_ulogic_vector(XLEN-1 downto 0);
@@ -18,8 +19,7 @@ entity e_riscv_insn_3in is
         -- Immediate value gets sign-extended if necessary
         imm  : in  std_ulogic_vector(XLEN-1 downto 0);
         insn : in  std_ulogic_vector(31 downto 0);
-        rd   : out std_ulogic_vector(XLEN-1 downto 0);
-        Complete : out std_ulogic
+        rd   : out std_ulogic_vector(XLEN-1 downto 0)
     );
 end e_riscv_insn_3in;
 
