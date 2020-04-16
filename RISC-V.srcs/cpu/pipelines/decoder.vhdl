@@ -81,6 +81,35 @@ architecture riscv_decoder of e_decoder is
     signal mstatusBuf : std_ulogic_vector(mstatus'LENGTH downto 0);
     signal ringBuf : std_ulogic_vector(ring'LENGTH downto 0);
     
+    
+    
+    -- BIG FIXME --
+    -- Rearchitect decoded information:
+    --   - logicOp: operation type (ALU, flow control, mem, system)
+    --   - operation flags (ALU flags that pass DIRECTLY to the ALU, etc.)
+    --   - loadResource: data prep directions (whether to interpret r1 and
+    --     r2 as registers, which type of immediate, whether to sign-extend,
+    --     operation width, etc.)
+    --
+    -- Need to figure out how to pass H (e.g. MULH), signed, and unsigned
+    -- attributes; as well as where I want to pass W (ADDW, MULW).
+    -- 
+    -- Theory:
+    --   The loadResource flags tell the Load stage when to get rs1 (as
+    --   argument 1), rs2 (as argument 2), or some particular immediate (as
+    --   argument 1, 2, or 3).  The Load stage understands the fixed
+    --   locations of rs1 and rs2; as well as various immediate value
+    --   formats.
+    --
+    --   The Load stage must be instructed to sign extension as appropriate.
+    --
+    --   The Load stage passes the parameters here to the Execute stage,
+    --   which will interpret logicOp and the operation flags to determine
+    --   what exactyl to execute.  An ALU operation will generally pass
+    --   logicOp(9 downto 0) directly to the ALU, along with the relevant
+    --   information about how to operate on the arguments given.
+    -- END BIG FIXME --
+    
     -- What data to load by reading the insn
     -- bit 0:  rs1
     -- bit 1:  rs2
@@ -121,6 +150,8 @@ architecture riscv_decoder of e_decoder is
     alias lopAND : std_ulogic is logicOp(5);
     alias lopOR  : std_ulogic is logicOp(6);
     alias lopXOR : std_ulogic is logicOp(7);
+    alias lopMUL : std_ulogic is logicOp(8);
+    alias lopDIV : std_ulogic is logicOp(9);
     alias lopIll : std_ulogic is logicOp(10);
     alias lopSLT : std_ulogic is logicOp(11);
 begin
@@ -201,7 +232,34 @@ begin
                         --   - the instruction is valid/invalid
                         --   - What valid operation it is
                         --   - Whether it's an *I, *W, or arithmetic shift 
-                    end if; -- RV32I/64I Arithmetic operations
+                        -- END RV32I/64I Arithmetic operations
+                    elsif ( ((opcode OR "0001000") = "0111011") -- Only these bits on
+                         AND (funct7 = "0000001")) then
+                        -- Essential mask 011_011
+                        -- RV32M/RV64M operations
+                        -- W operations: 011w011
+                        -- funct7   funct3  opcode      insn    opcode-w=1  Notes
+                        -- 0000001  000     011w011     MUL     MULW
+                        -- 0000001  001     011w011     MULH                Upper XLEN bits for 2*XLEN product
+                        -- 0000001  010     011w011     MULHSU              Same, r1 signed * r2 unsigned
+                        -- 0000001  011     011w011     MULHU               Same, r1 and r2 both unsigned
+                        -- 0000001  100     011w011     DIV     DIVW
+                        -- 0000001  101     011w011     DIVU    DIVUW
+                        -- 0000001  110     011w011     REM     REMW
+                        -- 0000001  111     011w011     REMU    REMUW
+                        -- extract W bit
+                        lrW <= opcode(3);
+                        if ( (lrW = '1') AND (funct3(2) = '0') AND (funct3 /= "000") ) then
+                            -- illegal instruction
+                            lopIll <= '1';
+                        else
+                            -- funct3 = 0xx mul, 1xx div
+                            lopMUL <= NOT funct3(2);
+                            lopDIV <= funct3(2);
+                            -- FIXME:  MUL[HSU], DIV[U], REM[U]
+                            -- pass r1/r2 signed/unsigned and an H bit flag
+                        end if;
+                    end if;
             -- todo:  handle handshake and data passing            
             elsif (busyIn = '0') then
                 -- The next stage is not busy, so send it data
