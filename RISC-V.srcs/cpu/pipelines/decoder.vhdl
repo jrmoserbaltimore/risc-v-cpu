@@ -138,7 +138,7 @@ architecture riscv_decoder of e_decoder is
     -- bit 0:  *B
     -- bit 1:  *H
     -- bit 2:  *W
-    -- bit 3:  *D? (128-bit)
+    -- bit 3:  *D
     -- bit 4:  Unsigned
     -- bit 5:  Arithmetic (and Adder-Subtractor subtract)
     -- bit 6:  Right-shift
@@ -148,25 +148,29 @@ architecture riscv_decoder of e_decoder is
     alias opB   : std_ulogic is opFlags(0);
     alias opH   : std_ulogic is opFlags(1);
     alias opW   : std_ulogic is opFlags(2);
-    --alias opD   : std_ulogic is opFlags(3);
+    alias opD   : std_ulogic is opFlags(3);
     alias opUnS : std_ulogic is opFlags(4);
     alias opAr  : std_ulogic is opFlags(5);
     alias opRSh : std_ulogic is opFlags(6);
     alias opHSU : std_ulogic is opFlags(7);
     alias opRem : std_ulogic is opFlags(8);
     
-    -- Load resource:  what to load
-    -- bit 0:  R-type (rs1, rs2)
-    -- bit 1:  I-type (rs1, insn[31:20] sign-extend)
-    -- bit 2:  S-Type (rs1, insn[31:25] & insn[11:7] sign-extended)
-    -- bit 3:  B-type (rs1, rs2, insn[31] & insn[7] & insn[30:25] & insn[11:8] sign-extend)
-    -- bit 4:  U-type (insn[31:12])
-    -- bit 5:  J-type (insn[31] & insn[19:12] & insn[20] & insn[30:25] & insn[24:21] sign-extend)
+    -- Load resource:   Type        what to load
+    -- bit 0:  R-type   Register    (rs1, rs2)
+    -- bit 1:  I-type   Immediate   (rs1, insn[31:20] sign-extend)
+    -- bit 2:  S-Type   Store       (rs1, insn[31:25] & insn[11:7] sign-extended)
+    -- bit 3:  B-type   Branch      (rs1, rs2, insn[31] & insn[7] & insn[30:25] & insn[11:8] sign-extend)
+    -- bit 4:  U-type   Upper-Imm   (insn[31:12])
+    -- bit 5:  J-type   Jump        (insn[31] & insn[19:12] & insn[20] & insn[30:25] & insn[24:21] sign-extend)
+    -- bit 6:  U-type               AUIPC, 
     signal loadResource : std_ulogic_vector(5 downto 0);
     alias lrR : std_ulogic is loadResource(0);
     alias lrI : std_ulogic is loadResource(1);
     alias lrS : std_ulogic is loadResource(2);
     alias lrB : std_ulogic is loadResource(3);
+    alias lrU : std_ulogic is loadResource(4);
+    alias lrJ : std_ulogic is loadResource(5);
+    alias lrUPC : std_ulogic is loadResource(6);
 begin
     add : process(clk) is
         variable Iflg : std_ulogic := '0';
@@ -253,11 +257,57 @@ begin
                                 lopAND <= '1';
                             end case;
                         end if;
-                        -- We now know:
-                        --   - the instruction is valid/invalid
-                        --   - What valid operation it is
-                        --   - Whether it's an *I, *W, or arithmetic shift 
                         -- END RV32I/64I Arithmetic operations
+
+                    elsif (   ((opcode OR "0100000") = "0100011") -- Load/Store
+                           OR (opcode = "0110111") -- LUI
+                           OR (opcode = "0010111") ) then  -- AUIPC
+                        -- RV32I/64I load/store and LUI/LWU/AUIPC
+                        --
+                        -- funct3: UWH, D is W+H
+                        -- funct3   opcode       insn
+                        --          0110111     LUI
+                        --          0010111     AUIPC
+                        -- 000      0000011     LB
+                        -- 001      0000011     LH
+                        -- 010      0000011     LW
+                        -- 011      0000011     LD
+                        -- 100      0000011     LBU
+                        -- 101      0000011     LHU
+                        -- 110      0000011     LWU
+                        -- 000      0100011     SB
+                        -- 001      0100011     SH
+                        -- 010      0100011     SW
+                        -- 011      0100011     SD
+                        if ((opcode(5) = '1') AND (funct3(2) = '1')) then
+                            -- Illegal instruction
+                            lopIll <= '1';
+                        else
+                            case opcode is
+                            -- Load/Store
+                            when "0000011"|"0100011" =>
+                                -- LWU is also "110"
+                                opUnS <= funct3(2);
+                                -- 64-bit LD/SD
+                                opD   <= funct3(1) AND funct3(0);
+                                -- 32-bit instructions
+                                opW   <= funct3(1) AND NOT opD;
+                                opH   <= funct3(0) AND NOT opD;
+                                -- Operation load/store
+                                lopLoad  <= NOT opcode(5);
+                                lopStore <= opcode(5);
+                                lrI      <= lopLoad;
+                                lrS      <= lopStore;
+                            when "0110111"|"0010111" =>
+                                -- LUI/AUIPC
+                                lopLoad <= '1';
+                                -- U or UPC type?
+                                lrU     <= opcode(5);
+                                lrUPC   <= NOT opcode(5);
+                            end case;
+                        end if;
+                        -- END RV32I/64I load/store and LUI/LWU/AUIPC
+
                     elsif ( ((opcode OR "0001000") = "0111011") -- Only these bits on
                          AND (funct7 = "0000001")) then
                         -- Essential mask 011_011
