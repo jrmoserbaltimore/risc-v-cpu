@@ -81,19 +81,12 @@ architecture riscv_decoder of e_decoder is
     signal mstatusBuf : std_ulogic_vector(mstatus'LENGTH downto 0);
     signal ringBuf : std_ulogic_vector(ring'LENGTH downto 0);
     
-    
-    
-    -- BIG FIXME --
-    -- Rearchitect decoded information:
+    -- Decoded information:
     --   - logicOp: operation type (ALU, flow control, mem, system)
     --   - operation flags (ALU flags that pass DIRECTLY to the ALU, etc.)
     --   - loadResource: data prep directions (whether to interpret r1 and
     --     r2 as registers, which type of immediate, whether to sign-extend,
     --     operation width, etc.)
-    --
-    -- Need to figure out how to pass H (e.g. MULH), signed, and unsigned
-    -- attributes; as well as where I want to pass W (ADDW, MULW).
-    -- 
     -- Theory:
     --   The loadResource flags tell the Load stage when to get rs1 (as
     --   argument 1), rs2 (as argument 2), or some particular immediate (as
@@ -108,60 +101,82 @@ architecture riscv_decoder of e_decoder is
     --   what exactyl to execute.  An ALU operation will generally pass
     --   logicOp(9 downto 0) directly to the ALU, along with the relevant
     --   information about how to operate on the arguments given.
-    -- END BIG FIXME --
-    
-    -- What data to load by reading the insn
-    -- bit 0:  rs1
-    -- bit 1:  rs2
-    -- bit 2:  I-Type imm
-    -- bit 3+2:  I-type + rs1 (LD)
-    -- bit 4:  S-type imm
-    -- bit 5:  sign-extend (????)
-    -- bit 6:  Unsigned
-    -- bit 7:  64-bit W instruction (non-W is determined by context XLEN)
-    -- bit 8:  Arithmetic
-    signal loadResource : std_ulogic_vector(10 downto 0);
-    alias lrU : std_ulogic is loadResource(6);
-    alias lrW : std_ulogic is loadResource(7);
-    alias lrA : std_ulogic is loadResource(8);
+
     -- What operation
     -- ALU ops
-    -- 0: add: ADD, ADDI; 64 ADDW, ADDIW 
-    -- 1: sub: SUB; 64 SUBW
-    -- 2: shift left: SLL, SLLI; 64 SLLIW
-    -- 3: shift right: SRL, SRLI; 64 SRRIW
-    -- 4: shift right arithmetic: SRA, SRAI; 64 SRAIW
-    -- 5: AND: AND, ANDI
-    -- 6: OR: OR, ORI
-    -- 7: XOR: XOR, XORI
+    -- 0: add, sub: ADD, ADDI, SUB; 64 ADDW, ADDIW, SUBW
+    -- 1: shift: SLL, SLLI, SRL, SRLI, SRA; 64 SLLIW, SRRIW, SRAIW
+    -- 2: AND: AND, ANDI
+    -- 3: OR: OR, ORI
+    -- 4: XOR: XOR, XORI
+    --
     -- Extension: M
-    -- 8: Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
-    -- 9: Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
+    -- 5: Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
+    -- 6: Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
     --  
     -- Non-ALU ops
-    -- 10: illegal instruction
-    -- 11: Comparison: SLTI, SLTIU
-    signal logicOp : std_ulogic_vector(11 downto 0);
-    alias lopAdd : std_ulogic is logicOp(0);
-    alias lopSub : std_ulogic is logicOp(1);
-    alias lopSLL : std_ulogic is logicOp(2);
-    alias lopSRL : std_ulogic is logicOp(3);
-    alias lopSRA : std_ulogic is logicOp(4);
-    alias lopAND : std_ulogic is logicOp(5);
-    alias lopOR  : std_ulogic is logicOp(6);
-    alias lopXOR : std_ulogic is logicOp(7);
-    alias lopMUL : std_ulogic is logicOp(8);
-    alias lopDIV : std_ulogic is logicOp(9);
-    alias lopIll : std_ulogic is logicOp(10);
-    alias lopSLT : std_ulogic is logicOp(11);
+    -- 7: illegal instruction
+    -- 8: Comparison: SLTI, SLTIU
+    --
+    -- Load/Store
+    -- 9: Load
+    -- 10: Store
+    signal logicOp : std_ulogic_vector(10 downto 0);
+    alias lopAdd   : std_ulogic is logicOp(0); -- Adder-Subtractor
+    alias lopSLL   : std_ulogic is logicOp(1);
+    alias lopAND   : std_ulogic is logicOp(2);
+    alias lopOR    : std_ulogic is logicOp(3);
+    alias lopXOR   : std_ulogic is logicOp(4);
+    alias lopMUL   : std_ulogic is logicOp(5);
+    alias lopDIV   : std_ulogic is logicOp(6);
+    alias lopIll   : std_ulogic is logicOp(7);
+    alias lopSLT   : std_ulogic is logicOp(8);
+    alias lopLoad  : std_ulogic is logicOp(9);
+    alias lopStore : std_ulogic is logicOp(10);
+    
+    -- Operation flags
+    -- bit 0:  *B
+    -- bit 1:  *H
+    -- bit 2:  *W
+    -- bit 3:  *D? (128-bit)
+    -- bit 4:  Unsigned
+    -- bit 5:  Arithmetic (and Adder-Subtractor subtract)
+    -- bit 6:  Right-shift
+    -- bit 7:  MULHSU
+    -- bit 8:  DIV Remainder
+    signal opFlags : std_ulogic_vector(8 downto 0);
+    alias opB   : std_ulogic is opFlags(0);
+    alias opH   : std_ulogic is opFlags(1);
+    alias opW   : std_ulogic is opFlags(2);
+    --alias opD   : std_ulogic is opFlags(3);
+    alias opUnS : std_ulogic is opFlags(4);
+    alias opAr  : std_ulogic is opFlags(5);
+    alias opRSh : std_ulogic is opFlags(6);
+    alias opHSU : std_ulogic is opFlags(7);
+    alias opRem : std_ulogic is opFlags(8);
+    
+    -- Load resource:  what to load
+    -- bit 0:  R-type (rs1, rs2)
+    -- bit 1:  I-type (rs1, insn[31:20] sign-extend)
+    -- bit 2:  S-Type (rs1, insn[31:25] & insn[11:7] sign-extended)
+    -- bit 3:  B-type (rs1, rs2, insn[31] & insn[7] & insn[30:25] & insn[11:8] sign-extend)
+    -- bit 4:  U-type (insn[31:12])
+    -- bit 5:  J-type (insn[31] & insn[19:12] & insn[20] & insn[30:25] & insn[24:21] sign-extend)
+    signal loadResource : std_ulogic_vector(5 downto 0);
+    alias lrR : std_ulogic is loadResource(0);
+    alias lrI : std_ulogic is loadResource(1);
+    alias lrS : std_ulogic is loadResource(2);
+    alias lrB : std_ulogic is loadResource(3);
 begin
     add : process(clk) is
         variable Iflg : std_ulogic := '0';
         variable Aflg : std_ulogic := '0';
     begin
         if (rising_edge(clk)) then
-            -- FIXME:  Wipe logicOp under some condition...or any condition?
-            logicOp <= (others => '0');
+            -- FIXME:  Wipe these under some condition...or any condition?
+            logicOp      <= (others => '0');
+            opFlags      <= (others => '0');
+            loadResource <= (others => '0');
             -- FIXME:  put the buffer on the output?
             if (rst = '1') then
                 -- Reset, completely.  Don't care about anything.
@@ -171,6 +186,7 @@ begin
             -- FIXME:  must move the decoding stage to interact properly
             -- with the handshaking stage below
             -- TODO:  All opcode analysis up here
+            -- 32-bit opcodes: aaa11 where aaa != 111
             elsif (    ((opcode AND "0010011") = "0010011") -- These bits on
                    AND ((opcode AND "1000100") = "0000000")) then -- These bits off
                      -- Essential mask 0_1_011
@@ -189,39 +205,48 @@ begin
                         -- 0000000  110     0i1w011     OR                  ORI
                         -- 0000000  111     0i1w011     AND                 ANDI
                         -- extract W and I bits
-                        lrW <= opcode(3);
+                        opW  <= opcode(3);
+                        opAr <= funct7(5);
                         -- Arithmetic bit doesn't go to output for SUB
                         Aflg := funct7(5);
-                        Iflg := NOT opcode(5);
+                        Iflg := NOT opcode(5); -- immediate
                         -- Check for illegal instruction
                         if (
-                               ( (Aflg = '1') AND (OR (logicOp AND NOT "10001") /= '0') ) -- not SUB or SRA
-                            OR ( (Iflg = '1') AND (logicOp(1) = '1') ) -- SUBI isn't an opcode
-                            OR ( (lrW = '1') AND (OR (logicOp AND "100011100000") /= '0') ) ) then -- Bitops, SLT
+                               ( (opAr = '1') AND (funct3 /= "000") AND (funct3 /= "101") ) -- not SUB or SRA
+                            OR ( (Iflg = '1') AND (funct3 = "000") ) -- SUBI isn't an opcode
+                            OR ( (opW = '1') AND (
+                                                     (funct3 = "010") -- SLT
+                                                  OR (funct3 = "011") -- SLTU
+                                                  OR (funct3 = "100") -- XOR
+                                                  OR (funct3 = "110") -- OR
+                                                  OR (funct3 = "111") -- AND
+                                                  )
+                                )
+                           ) then
                             -- illegal instruction
                             lopIll <= '1';
                         else
+                            -- Determine instruction type for loadResource.
+                            -- Load stage MUST check (lrI AND  
+                            lrR <= NOT Iflg;
+                            lrI <= Iflg;
                             -- Decode funct3
                             case funct3 is
                             when "000" =>
                                 -- lrA determins add or subtract as per table above
-                                lopSub <= lrA;
-                                lopAdd <= NOT lrA;
-                            when "001" =>
+                                lopAdd <= '1';
+                            when "001"|"101" =>
                                 lopSLL <= '1';
-                            when "010" =>
+                                opAr  <= funct7(5);
+                                --Right shift
+                                opRSh <= '1' when funct3 = "101" else
+                                         '0';
+                            when "010"|"011" =>
                                 lopSLT <= '1';
-                            when "011" =>
-                                lopSLT <= '1';
-                                lrU    <= '1';
+                                opUnS  <= '1' when funct3 = "011" else
+                                          '0';
                             when "100" =>
                                 lopXOR <= '1';
-                            when "101" =>
-                                -- SRL when not arithmetic.
-                                -- Put the Arithmetic bit into the output
-                                lrA    <= Aflg;
-                                lopSRL <= NOT lrA;
-                                lopSRA <= lrA;
                             when "110" =>
                                 lopOR <= '1';
                             when "111" =>
@@ -248,17 +273,35 @@ begin
                         -- 0000001  110     011w011     REM     REMW
                         -- 0000001  111     011w011     REMU    REMUW
                         -- extract W bit
-                        lrW <= opcode(3);
-                        if ( (lrW = '1') AND (funct3(2) = '0') AND (funct3 /= "000") ) then
+                        opW <= opcode(3);
+                        if ( (opW = '1') AND (funct3(2) = '0') AND (funct3 /= "000") ) then
                             -- illegal instruction
                             lopIll <= '1';
                         else
                             -- funct3 = 0xx mul, 1xx div
                             lopMUL <= NOT funct3(2);
                             lopDIV <= funct3(2);
-                            -- FIXME:  MUL[HSU], DIV[U], REM[U]
-                            -- pass r1/r2 signed/unsigned and an H bit flag
+                            -- Much more compact than if statements
+                            -- Half-word
+                            case funct3 is
+                            when "001"|"010"|"011" =>
+                                opH <= '1';
+                            end case;
+                            case funct3 is
+                            -- Unsigned
+                            when "010"|"011"|"101"|"111" =>
+                                opUnS <= '1';
+                            end case;
+                            -- Remainder
+                            case funct3 is
+                            when "110"|"111" =>
+                                opRem <= '1';
+                            end case;
+                            -- MULHSU
+                            opHSU <= '1' when funct3 = "010" else
+                                     '0';
                         end if;
+                        -- END RV32M/64M
                     end if;
             -- todo:  handle handshake and data passing            
             elsif (busyIn = '0') then
