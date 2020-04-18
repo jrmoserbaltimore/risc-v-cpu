@@ -1,5 +1,9 @@
 -- vim: sw=4 ts=4 et
--- Decoder to do sign extension and such
+-- Decoder to understand instruction and instruct the forward dependency
+-- stage.
+--
+-- This decoder may be large and a multi-stage decoder might reach a
+-- higher fMax,
 
 library IEEE;
 use IEEE.std_logic_1164.all;
