@@ -18,77 +18,81 @@ use ieee.math_real."log2";
 use work.e_alu;
 use work.e_barrel_shifter;
 
---   _____________
---  |        |    |
---  |       DIV SHIFT
---  |         | |
---  |-----MUL OR    enDiv enShift
---  |  ***  | /         | /
---  | INPUT OR    EnMul OR
---  |  |  ___|        | /
---  |  | |            OR
---  |  | |            |
---  |  MUX------------
---  |   |
---  |  DSP
---  |___|
+--   A          B
+--   |          |
+--   |          *
+--   |      _________
+--   |     |         |
+--   |     |    *    |
+--   |     |  __|    |
+--   |     | |  |    |
+--   |     | |  |    |
+--   |___  | |  |    |
+--   |   | | |  |    |
+--   |   | | |  |    |
+--   |   DIVSH  |    |
+--   |  _| |    |    |
+--   | |   |  __|    |
+--   | |   | |       |
+--   MUX   MUX       |
+--   |     |         |
+--   DSP48E1         |
+--      |____________|
 --      |
 --    OUTPUT
 --     ***
 --
 -- Approach:
 --   - Instantiate cascading DSP48E1 units
---   - Fan out input data to a mux on the DSP and a separate mux
---     fanning out to SHIFT, MUL, and DIV.
---   - Fan DSP output out to both output and the muxes on MUL and
---     DIV complex multiplier and divider circuits
---   - Input data to MUL, DIV, and SHIFT are attached to AND gates
---     for enMul, enDiv, and enShift, so these circuits naturally
---     receive all zero for input
---   - The MUL and DIV circuits control the Mux to select DSP output
---     as their respective input
-
+--   - Instantiate divider-shifter DIVSH.
+--   - Fan out input data to a mux on the DSP and to DIVSH.
+--   - Fan DSP output out to both output and DIVSH.
+--   - DIVSH uses internal MUX to select inputs.
+--   - DIVSH controls ALU circuit to leverage DSP48E1.
+--   - DIVSH contains look-up table for bit shifting, uses the
+--     DSP multiplier to perform bit shifts.
+--
 -- DSP operations face only a single input mux on the critical path,
 -- and that mux idles favoring the input.  DSP handles addition,
 -- subtraction, and bitwise AND, OR, and XOR.  All other circuits
--- pass output through the DSP set to OR with zero to avoid muxes
--- in the output path.
+-- pass output through the DSP set to OR with zero.
 --
--- SHIFT is relatively-fast and has to pass through two OR gates
--- and a mux to reach the DSP input.
+-- The Divider-Shifter contains a look-up table to select a power
+-- of 2 for multiplication of the data to be shifted.  It also
+-- contains reversal circuitry to turn the input backwards for a
+-- right shift, and sign-extension for arithmetic shift right.
 --
--- MUL and DIV are multi-cycle instructions.  MUL gets the fastest
--- path to the DSP, being more-common than DIV.
+-- DIV is a multi-cycle instruction and uses the DSP48E1 to
+-- compute bit-shifts, multiplications, additions, and comparisons
+-- to implement complex division algorithms.
 --
--- SHIFT, MUL, and DIV are disabled and cannot affect the DSP
--- unless signals to use the respective operations are raised.
--- The enDiv and enMul signals enable their output so the three
--- don't collide.
+-- The INPUT and OUTPUT fan-out are both two.
 --
--- The INPUT fan-out is two (DSP MUX and other ops MUX); the
--- OUTPUT fan-out is two (output and other ops input MUX).
---
--- The DSP provides the adder and effectively gets the shortest
--- critical path.  The DSP becomes a tool used by MUL and DIV.
+-- The DSP provides the adder, bitwise operations, comparator, and
+-- multiplier, and gets the shortest critical path.  Comparatively
+-- rare divison gets a long, multi-cycle operation.  Bit shift is a
+-- look-up table and a multiplication. 
 architecture xilinx_dsp48e1_alu of e_alu is
     -- What operation
     -- ALU ops
     -- 0: add, sub: ADD, ADDI, SUB; 64 ADDW, ADDIW, SUBW
     -- 1: shift: SLL, SLLI, SRL, SRLI, SRA; 64 SLLIW, SRRIW, SRAIW
-    -- 2: AND: AND, ANDI
-    -- 3: OR: OR, ORI
-    -- 4: XOR: XOR, XORI
+    -- 2: Comparator (SLT, SLTU, SLTI, SLTIU)
+    -- 3: AND: AND, ANDI
+    -- 4: OR: OR, ORI
+    -- 5: XOR: XOR, XORI
     --
     -- Extension: M
-    -- 5: Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
-    -- 6: Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
+    -- 6: Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
+    -- 7: Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
     alias lopAdd   : std_ulogic is logicOp(0);
     alias lopShift : std_ulogic is logicOp(1);
-    alias lopAND   : std_ulogic is logicOp(2);
-    alias lopOR    : std_ulogic is logicOp(3);
-    alias lopXOR   : std_ulogic is logicOp(4);
-    alias lopMUL   : std_ulogic is logicOp(5);
-    alias lopDIV   : std_ulogic is logicOp(6);
+    alias lopCmp   : std_ulogic is logicOp(2);
+    alias lopAND   : std_ulogic is logicOp(3);
+    alias lopOR    : std_ulogic is logicOp(4);
+    alias lopXOR   : std_ulogic is logicOp(5);
+    alias lopMUL   : std_ulogic is logicOp(6);
+    alias lopDIV   : std_ulogic is logicOp(7);
     
     -- Operation flags
     -- bit 0:  *B
@@ -149,8 +153,7 @@ begin
     port map (
         Din        => rs1,
         Shift      => rs2(integer(ceil(log2(real(XLEN))))-1 downto 0),
-        ShRight    => opRSh,
-        Arithmetic => opAr,
+        opFlags    => (opRSh, opAr, opD, opW),
         Dout       => barrelOut
     );
     -- TODO:  take current XLEN into account and sign-extend

@@ -8,7 +8,6 @@
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
-use work.e_riscv_insn_2in;
 use work.e_binary_adder;
 
 entity e_decoder is
@@ -110,34 +109,34 @@ architecture riscv_decoder of e_decoder is
     -- ALU ops
     -- 0: add, sub: ADD, ADDI, SUB; 64 ADDW, ADDIW, SUBW
     -- 1: shift: SLL, SLLI, SRL, SRLI, SRA; 64 SLLIW, SRRIW, SRAIW
-    -- 2: AND: AND, ANDI
-    -- 3: OR: OR, ORI
-    -- 4: XOR: XOR, XORI
+    -- 2: Comparator (SLT, SLTU, SLTI, SLTIU)
+    -- 3: AND: AND, ANDI
+    -- 4: OR: OR, ORI
+    -- 5: XOR: XOR, XORI
     --
     -- Extension: M
-    -- 5: Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
-    -- 6: Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
+    -- 6: Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
+    -- 7: Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
     --  
     -- Non-ALU ops
-    -- 7: illegal instruction
-    -- 8: Comparison: SLTI, SLTIU
+    -- 8: illegal instruction
     --
     -- Load/Store
     -- 9: Load
     -- 10: Store
     signal logicOp : std_ulogic_vector(10 downto 0);
-    alias lopAdd   : std_ulogic is logicOp(0); -- Adder-Subtractor
-    alias lopSLL   : std_ulogic is logicOp(1);
-    alias lopAND   : std_ulogic is logicOp(2);
-    alias lopOR    : std_ulogic is logicOp(3);
-    alias lopXOR   : std_ulogic is logicOp(4);
-    alias lopMUL   : std_ulogic is logicOp(5);
-    alias lopDIV   : std_ulogic is logicOp(6);
-    alias lopIll   : std_ulogic is logicOp(7);
-    alias lopSLT   : std_ulogic is logicOp(8);
+    alias lopAdd   : std_ulogic is logicOp(0);
+    alias lopShift : std_ulogic is logicOp(1);
+    alias lopCmp   : std_ulogic is logicOp(2);
+    alias lopAND   : std_ulogic is logicOp(3);
+    alias lopOR    : std_ulogic is logicOp(4);
+    alias lopXOR   : std_ulogic is logicOp(5);
+    alias lopMUL   : std_ulogic is logicOp(6);
+    alias lopDIV   : std_ulogic is logicOp(7);
+    alias lopIll   : std_ulogic is logicOp(8);
     alias lopLoad  : std_ulogic is logicOp(9);
     alias lopStore : std_ulogic is logicOp(10);
-    
+
     -- Operation flags
     -- bit 0:  *B
     -- bit 1:  *H
@@ -244,13 +243,13 @@ begin
                                 -- lrA determins add or subtract as per table above
                                 lopAdd <= '1';
                             when "001"|"101" =>
-                                lopSLL <= '1';
+                                lopShift <= '1';
                                 opAr  <= funct7(5);
                                 --Right shift
                                 opRSh <= '1' when funct3 = "101" else
                                          '0';
                             when "010"|"011" =>
-                                lopSLT <= '1';
+                                lopCmp <= '1';
                                 opUnS  <= '1' when funct3 = "011" else
                                           '0';
                             when "100" =>

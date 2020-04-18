@@ -48,7 +48,7 @@ use IEEE.std_logic_1164.all;
 -- full adder.
 entity e_binary_adder is
     generic ( XLEN      : natural;
-              Cycles    : natural
+              Cycles    : natural := 1
     );
     port(
         A        : in  std_ulogic_vector(XLEN-1 downto 0);
