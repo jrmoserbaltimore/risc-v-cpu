@@ -146,6 +146,10 @@ begin
                         Pout => p_tree(i)(j),
                         Gout => g_tree(i)(j)
                     );
+                -- //Pout <= P and Pin and Gin
+                -- p_tree(i)(j) <= p_tree(i)(j-1) AND p_tree(i-2**j)(j-1) AND g_tree(i-2**j)(j-1);
+                -- //Gout <= (P and Gin) or G
+                -- g_tree(i)(j) <= (p_tree(i)(j-1) AND g_tree(i-2**j)(j-1)) OR g_tree(i)(j-1);    
             end generate; -- black cells
 
             -- The last in each row is a gray cell.  j stops before the last row, so
