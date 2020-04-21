@@ -266,5 +266,31 @@ begin
     --
     -- - No pattern detection
     -- - Multiplier and A:B 48-bit adder enabled
-
+--    DSP48E1_inst : DSP48E1
+--    generic map (
+--       -- Feature Control Attributes: Data Path Selection
+--      A_INPUT => "DIRECT",
+--        B_INPUT => "DIRECT",
+--        USE_DPORT => FALSE,
+--        USE_MULT => "DYNAMIC",
+--        USE_SIMD => "ONE48",
+--        -- Pipeline configuration
+--        ACASCREG => 1,
+--        ADREG => 1,
+--        ALUMODEREG => 1,
+--        AREG => 1,
+--        BCASCREG => 1,
+--        BREG => 1,
+--        CARRYINREG => 1,
+--        CARRYINSELREG => 1,
+--        CREG => 1,
+--        DREG => 1,
+--        INMODEREG => 1,
+--        MREG => 1,
+--        OPMODEREG => 1,
+--        PREG => 1
+--    )
+--    port map (
+--        -- TODO:  Define port map
+--    );
 end architecture;

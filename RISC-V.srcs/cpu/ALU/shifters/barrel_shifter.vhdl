@@ -93,8 +93,14 @@ begin
         --
         -- Reverse if shifting right
         for i in (highBit-1) downto 0 loop
-            tree(-1)(i) <= Din(i) when opRSh = '0' else
-                           Din((highBit-1) - i);
+            if (opRSh = '0') then
+                tree(-1)(i) <= Din(i);
+            else
+                tree(-1)(i) <= Din((highBit-1) - i);
+            end if;
+            -- Vivado 2019 says it doesn't support this syntax of if statement:
+            --tree(-1)(i) <= Din(i) when opRSh = '0' else
+            --               Din((highBit-1) - i);
         end loop;
  
         -- Computes all bits in parallel at each stage  
@@ -109,8 +115,13 @@ begin
 
         -- Reverse back when shifting right
         for i in (highBit-1) downto 0 loop
-            Dout(i) <= tree(Shift'HIGH)(i) when opRSh = '0' else
-                       tree(Shift'HIGH)((highBit-1) - i);
+            if (opRSh = '0') then
+                Dout(i) <= tree(Shift'HIGH)(i);
+            else
+                Dout(i) <= tree(Shift'HIGH)((highBit-1) - i);
+            end if;
+            --Dout(i) <= tree(Shift'HIGH)(i) when opRSh = '0' else
+            --           tree(Shift'HIGH)((highBit-1) - i);
         end loop;
 
         -- sign extend

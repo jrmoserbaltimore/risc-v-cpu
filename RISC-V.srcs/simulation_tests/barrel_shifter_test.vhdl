@@ -9,7 +9,7 @@ use work.e_barrel_shifter;
 
 entity et_barrel_shift is
     generic (
-        XLEN      : natural
+        XLEN      : natural := 8
     );
     port(
         Dout       : out std_ulogic_vector(XLEN-1 downto 0)
@@ -20,11 +20,11 @@ architecture t_barrel_shift of et_barrel_shift is
 begin
     barrel_shifter: entity e_barrel_shifter(barrel_shifter)
     generic map (
-        XLEN      => 8
+        XLEN      => XLEN
     )
     port map (
         Din        => "10110101",  -- output should be 10101000
-        Shift      => "0011", -- 3
+        Shift      => "011", -- 3
         opFlags    => ('0', '0', '0', '0'), -- rsh, ar
         Dout       => DOut
     );

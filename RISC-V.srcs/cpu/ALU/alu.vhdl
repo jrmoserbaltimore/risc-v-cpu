@@ -20,7 +20,7 @@ use work.e_barrel_shifter;
 entity e_alu is
     generic
     (
-        XLEN : natural;
+        XLEN : natural := 64;
         FmaxFactor : positive := 1
     );
     port

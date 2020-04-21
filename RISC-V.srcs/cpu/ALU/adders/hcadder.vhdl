@@ -29,6 +29,8 @@ begin
            -- Carry in the Sub bit
         g_tree(i)(-1) <=  A(i) AND Bs(i) when i /= 0 else
                          (A(i) AND Bs(i)) OR (p_tree(i)(-1) AND Sub);
+        -- XOR with next stage's propagated carry
+        S(i) <= g_tree(i)(LastStage) XOR p_tree(i+1)(-1);
     end generate;
 
     -- All but the last stage
@@ -37,55 +39,68 @@ begin
         cells: for i in (XLEN-1) downto 0 generate
         begin
             -- Horrendous unreadable math please help
-            black_cells: if ((i mod 2 = 1) AND (integer(((i+1)/2)) > (j+1)) AND i < XLEN) generate
+            black_cells: if (
+                            -- These only go on even bits (1 3 5 7…starting from 0)
+                             (i mod 2 = 1)
+                             -- each successive stage reaches twice as far back
+                              AND (integer(((i+1)/2)) > (2**j))
+                            ) generate
                 cell: entity e_binary_adder_pg_black_cell(binary_adder_pg_black_cell)
                     port map(
-                        P    => p_tree(i)(j-1),
-                        G    => g_tree(i)(j-1),
-                        Pin  => p_tree(i-2**j)(j-1),
-                        Gin  => g_tree(i-2**j)(j-1),
-                        Pout => p_tree(i)(j),
-                        Gout => g_tree(i)(j)
+                        P    => p_tree(j-1)(i),
+                        G    => g_tree(j-1)(i),
+                        Pin  => p_tree(j-1)(i-2**j),
+                        Gin  => g_tree(j-1)(i-2**j),
+                        Pout => p_tree(j)(i),
+                        Gout => g_tree(j)(i)
                     );
+                -- //Pout <= P and Pin and Gin
+                -- p_tree(j)(i) <= p_tree(j-1)(i) AND p_tree(j-1)(i-2**j) AND g_tree(j-1)(i-2**j);
+                -- //Gout <= (P and Gin) or G
+                -- g_tree(j)(i) <= (p_tree(j-1)(i) AND g_tree(j-1)(i-2**j)) OR g_tree(j-1)(i);    
             end generate; -- black cells
 
-           
             -- The last in each row is a gray cell.  j stops before the last row, so
             -- we don't get double grey cells.
-            grey_cells: if ((i mod 2 = 1) AND ((integer(((i+1)/2)) = (j+1)) OR (i = XLEN)) ) generate
+            --
+            -- Same as above, but all the furthest-LSB columns we skipped
+            grey_cells: if (
+                             (i mod 2 = 1)
+                             AND ((integer(((i+1)/2)) <= (2**j)))
+                             AND (i >= 2**j)
+                           ) generate
                 cell: entity e_binary_adder_pg_grey_cell(binary_adder_pg_grey_cell)
                     port map(
-                        P    => p_tree(i)(j-1),
-                        G    => g_tree(i)(j-1),
-                        Gin  => g_tree(i-2**j)(j-1),
-                        Gout => g_tree(i)(j)
+                        P    => p_tree(j-1)(i),
+                        G    => g_tree(j-1)(i),
+                        Gin  => g_tree(j-1)(i-2**j),
+                        Gout => g_tree(j)(i)
+                    );
+            end generate; -- gray cells
+            
+            grey_cells_end: if (
+                             (i mod 2 = 0)
+                             AND (j = LastStage)
+                             AND (i > 0)
+                           ) generate
+                cell: entity e_binary_adder_pg_grey_cell(binary_adder_pg_grey_cell)
+                    port map(
+                        P    => p_tree(j-1)(i),
+                        G    => g_tree(j-1)(i),
+                        Gin  => g_tree(j-1)(i-2**j),
+                        Gout => g_tree(j)(i)
                     );
             end generate; -- gray cells
 
             -- pass down
-            no_cells: if ((i mod 2 = 0) OR (integer(((i+1)/2)) < (j+1))) generate
-                p_tree(i)(j) <= p_tree(i)(j-1);
-                g_tree(i)(j) <= g_tree(i)(j-1);
+            no_cells: if (
+                          ( ((i < 2**j) OR (i mod 2 = 0)) AND (j < LastStage))
+                          OR ( ((i mod 2 = 1) OR (i = 0)) AND (j = LastStage))
+                      ) generate
+                p_tree(j)(i) <= p_tree(j-1)(i);
+                g_tree(j)(i) <= g_tree(j-1)(i);
             end generate; -- no cells
         end generate; -- cells
-
-    end generate; -- adder stages
-
-    -- Final stage
-    accurate_stage: for i in (XLEN-1) downto 0 generate
-    begin
-        gray_cells: if (i mod 2 = 0) generate
-        begin
-            cell: entity e_binary_adder_pg_grey_cell(binary_adder_pg_grey_cell)
-                    port map(
-                        P    => p_tree(i)(LastStage-1),
-                        G    => g_tree(i)(LastStage-1),
-                        Gin  => g_tree(i-2)(LastStage-1),
-                        Gout => g_tree(i)(LastStage)
-                    );
-        end generate;
-        -- XOR with next stage's propagated carry
-        S(i) <= g_tree(i)(LastStage) XOR p_tree(i+1)(-1);
     end generate;
     
     -- Invert B when subtracting
