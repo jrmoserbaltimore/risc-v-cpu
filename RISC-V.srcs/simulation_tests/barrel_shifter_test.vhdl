@@ -17,15 +17,21 @@ entity et_barrel_shift is
 end et_barrel_shift;
 
 architecture t_barrel_shift of et_barrel_shift is
+    signal Clk : std_ulogic := '0';
+    constant ClockFrequency : integer := 100e6;
+    constant ClockPeriod : time := 1000ms / ClockFrequency;
 begin
     barrel_shifter: entity e_barrel_shifter(barrel_shifter)
     generic map (
         XLEN      => XLEN
     )
     port map (
+--        Clk        => Clk,
         Din        => "10110101",  -- output should be 10101000
-        Shift      => "011", -- 3
-        opFlags    => ('0', '0', '0', '0'), -- rsh, ar
+        Shift      => "0011", -- 3
+        opFlags    => ('0', '0'), -- rsh, ar
         Dout       => DOut
     );
+    
+--    Clk <= not Clk after ClockPeriod;
 end t_barrel_shift;
