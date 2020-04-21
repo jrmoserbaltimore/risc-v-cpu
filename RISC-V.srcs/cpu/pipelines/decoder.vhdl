@@ -174,14 +174,213 @@ architecture riscv_decoder of e_decoder is
     alias lrU : std_ulogic is loadResource(4);
     alias lrJ : std_ulogic is loadResource(5);
     alias lrUPC : std_ulogic is loadResource(6);
+
 begin
-    add : process(clk) is
+    decoder: process(clk) is
         variable Iflg : std_ulogic := '0';
-        variable Aflg : std_ulogic := '0';
-    begin
-        if (rising_edge(clk)) then
-            -- FIXME:  Wipe these under some condition...or any condition?
-            logicOp      <= (others => '0');
+
+        ---------------------------------------
+        -- RV32I/RV64I Arithmetic operations --
+        ---------------------------------------
+        -- W operations: 0i1w011
+        -- funct7   funct3  opcode      insn    opcode-w=1  opcode-i=0  opcode-i=0,w=1
+        -- 0000000  000     0i1w011     ADD     ADDW        ADDI        ADDIW
+        -- 0100000  000     0i1w011     SUB     SUBW
+        -- 0000000  001     0i1w011     SLL     SLLW        SLLI        SLLIW
+        -- 0000000  010     0i1w011     SLT                 SLTI
+        -- 0000000  011     0i1w011     SLTU                SLTIU
+        -- 0000000  100     0i1w011     XOR                 XORI
+        -- 0000000  101     0i1w011     SRL     SRLW        SRLI        SRLIW
+        -- 0100000  101     0i1w011     SRA     SRAW        SRAI        SRAIW
+        -- 0000000  110     0i1w011     OR                  ORI
+        -- 0000000  111     0i1w011     AND                 ANDI
+        impure function decodeRVIArithmetic (decode: boolean) return boolean is
+            variable decoded : boolean := false;
+        begin
+            if (    ((opcode AND "0010011") = "0010011") -- These bits on
+                AND ((opcode AND "1000100") = "0000000")) -- These bits off
+                     -- Essential mask 0_1_011
+                AND ((funct7 AND "1011111") = "0000000") then
+
+                decoded := true;
+                -- extract W and I bits
+                opW  <= opcode(3);
+                opAr <= funct7(5);
+                -- Arithmetic bit doesn't go to output for SUB
+                Iflg := NOT opcode(5); -- immediate
+                -- Check for illegal instruction
+                if (
+                       ( (opAr = '1') AND (funct3 /= "000") AND (funct3 /= "101") ) -- not SUB or SRA
+                    OR ( (Iflg = '1') AND (funct3 = "000") ) -- SUBI isn't an opcode
+                    OR ( (opW = '1') AND (
+                                             (funct3 = "010") -- SLT
+                                          OR (funct3 = "011") -- SLTU
+                                          OR (funct3 = "100") -- XOR
+                                          OR (funct3 = "110") -- OR
+                                          OR (funct3 = "111") -- AND
+                                          )
+                        )
+                   ) then
+                    -- illegal instruction
+                    lopIll <= '1';
+                else
+                    -- Determine instruction type for loadResource.
+                    -- Load stage MUST check (lrI AND  
+                    lrR <= NOT Iflg;
+                    lrI <= Iflg;
+                    -- Decode funct3
+                    case funct3 is
+                    when "000" =>
+                        -- lrA determins add or subtract as per table above
+                        lopAdd <= '1';
+                    when "001"|"101" =>
+                        lopShift <= '1';
+                        opAr  <= funct7(5);
+                        --Right shift
+                        opRSh <= '1' when funct3 = "101" else
+                                 '0';
+                    when "010"|"011" =>
+                        lopCmp <= '1';
+                        opUnS  <= '1' when funct3 = "011" else
+                                  '0';
+                    when "100" =>
+                        lopXOR <= '1';
+                    when "110" =>
+                        lopOR <= '1';
+                    when "111" =>
+                        lopAND <= '1';
+                    end case;
+                end if; -- Function check
+            end if; -- opcode and function check
+            return decoded;
+        end function;
+
+        --------------------------------------------
+        -- RV32I/64I load/store and LUI/LWU/AUIPC --
+        --------------------------------------------
+        -- funct3: UWH, D is W+H
+        -- funct3   opcode       insn
+        --          0110111     LUI
+        --          0010111     AUIPC
+        -- 000      0000011     LB
+        -- 001      0000011     LH
+        -- 010      0000011     LW
+        -- 011      0000011     LD
+        -- 100      0000011     LBU
+        -- 101      0000011     LHU
+        -- 110      0000011     LWU
+        -- 000      0100011     SB
+        -- 001      0100011     SH
+        -- 010      0100011     SW
+        -- 011      0100011     SD
+        impure function decodeRVILoadStore (decode: boolean) return boolean is
+            variable decoded : boolean := false;
+        begin
+            if (   ((opcode OR "0100000") = "0100011") -- Load/Store
+                           OR (opcode = "0110111") -- LUI
+                           OR (opcode = "0010111") ) then  -- AUIPC
+                if ((opcode(5) = '1') AND (funct3(2) = '1')) then
+                    decoded := true;
+                    -- Illegal instruction
+                    lopIll <= '1';
+                else
+                    case opcode is
+                    -- Load/Store
+                    when "0000011"|"0100011" =>
+                        -- LWU is also "110"
+                        opUnS <= funct3(2);
+                        -- 64-bit LD/SD
+                        opD   <= funct3(1) AND funct3(0);
+                        -- 32-bit instructions
+                        opW   <= funct3(1) AND NOT opD;
+                        opH   <= funct3(0) AND NOT opD;
+                        -- Operation load/store
+                        lopLoad  <= NOT opcode(5);
+                        lopStore <= opcode(5);
+                        lrI      <= lopLoad;
+                        lrS      <= lopStore;
+                    when "0110111"|"0010111" =>
+                        -- LUI/AUIPC
+                        lopLoad <= '1';
+                        -- U or UPC type?
+                        lrU     <= opcode(5);
+                        lrUPC   <= NOT opcode(5);
+                    end case;
+                end if;
+            end if;
+            return decoded;
+        end function;
+
+        ---------------------------------
+        -- RV32I/RV64I jump and branch --
+        ---------------------------------
+        impure function decodeRVIBranch (decode: boolean) return boolean is
+            variable decoded : boolean := false;
+        begin
+            if ((opcode = "1100011") OR (opcode = "1100111") OR (opcode = "1101111")) then
+                decoded := true;
+            end if;
+            return decoded;
+        end function;
+                
+        ----------------------------
+        -- RV32M/RV64M operations --
+        ----------------------------
+        -- W operations: 011w011
+        -- funct7   funct3  opcode      insn    opcode-w=1  Notes
+        -- 0000001  000     011w011     MUL     MULW
+        -- 0000001  001     011w011     MULH                Upper XLEN bits for 2*XLEN product
+        -- 0000001  010     011w011     MULHSU              Same, r1 signed * r2 unsigned
+        -- 0000001  011     011w011     MULHU               Same, r1 and r2 both unsigned
+        -- 0000001  100     011w011     DIV     DIVW
+        -- 0000001  101     011w011     DIVU    DIVUW
+        -- 0000001  110     011w011     REM     REMW
+        -- 0000001  111     011w011     REMU    REMUW
+        impure function decodeRVM (decode: boolean) return boolean is
+            variable decoded : boolean := false;
+        begin
+            if ( ((opcode OR "0001000") = "0111011") -- Only these bits on
+                     AND (funct7 = "0000001")) then
+                -- Essential mask 011_011
+                decoded := true;
+                -- extract W bit
+                opW <= opcode(3);
+                if ( (opW = '1') AND (funct3(2) = '0') AND (funct3 /= "000") ) then
+                    -- illegal instruction
+                    lopIll <= '1';
+                else
+                    -- funct3 = 0xx mul, 1xx div
+                    lopMUL <= NOT funct3(2);
+                    lopDIV <= funct3(2);
+                    -- Much more compact than if statements
+                    -- Half-word
+                    case funct3 is
+                    when "001"|"010"|"011" =>
+                        opH <= '1';
+                    end case;
+                    case funct3 is
+                    -- Unsigned
+                    when "010"|"011"|"101"|"111" =>
+                        opUnS <= '1';
+                    end case;
+                    -- Remainder
+                    case funct3 is
+                    when "110"|"111" =>
+                        opRem <= '1';
+                    end case;
+                    -- MULHSU
+                    opHSU <= '1' when funct3 = "010" else
+                             '0';
+                end if;
+                -- END RV32M/64M
+            end if;
+            return decoded;
+        end function;
+
+begin
+    if (rising_edge(clk)) then
+        -- FIXME:  Wipe these under some condition...or any condition?
+        logicOp      <= (others => '0');
             opFlags      <= (others => '0');
             loadResource <= (others => '0');
             -- FIXME:  put the buffer on the output?
@@ -192,170 +391,14 @@ begin
                 stbR       <= '0';
             -- FIXME:  must move the decoding stage to interact properly
             -- with the handshaking stage below
-            -- TODO:  All opcode analysis up here
-            -- 32-bit opcodes: aaa11 where aaa != 111
-            elsif (    ((opcode AND "0010011") = "0010011") -- These bits on
-                   AND ((opcode AND "1000100") = "0000000")) then -- These bits off
-                     -- Essential mask 0_1_011
-                    if ((funct7 AND "1011111") = "0000000") then
-                        -- RV32I/RV64I Arithmetic operations
-                        -- W operations: 0i1w011
-                        -- funct7   funct3  opcode      insn    opcode-w=1  opcode-i=0  opcode-i=0,w=1
-                        -- 0000000  000     0i1w011     ADD     ADDW        ADDI        ADDIW
-                        -- 0100000  000     0i1w011     SUB     SUBW
-                        -- 0000000  001     0i1w011     SLL     SLLW        SLLI        SLLIW
-                        -- 0000000  010     0i1w011     SLT                 SLTI
-                        -- 0000000  011     0i1w011     SLTU                SLTIU
-                        -- 0000000  100     0i1w011     XOR                 XORI
-                        -- 0000000  101     0i1w011     SRL     SRLW        SRLI        SRLIW
-                        -- 0100000  101     0i1w011     SRA     SRAW        SRAI        SRAIW
-                        -- 0000000  110     0i1w011     OR                  ORI
-                        -- 0000000  111     0i1w011     AND                 ANDI
-                        -- extract W and I bits
-                        opW  <= opcode(3);
-                        opAr <= funct7(5);
-                        -- Arithmetic bit doesn't go to output for SUB
-                        Aflg := funct7(5);
-                        Iflg := NOT opcode(5); -- immediate
-                        -- Check for illegal instruction
-                        if (
-                               ( (opAr = '1') AND (funct3 /= "000") AND (funct3 /= "101") ) -- not SUB or SRA
-                            OR ( (Iflg = '1') AND (funct3 = "000") ) -- SUBI isn't an opcode
-                            OR ( (opW = '1') AND (
-                                                     (funct3 = "010") -- SLT
-                                                  OR (funct3 = "011") -- SLTU
-                                                  OR (funct3 = "100") -- XOR
-                                                  OR (funct3 = "110") -- OR
-                                                  OR (funct3 = "111") -- AND
-                                                  )
-                                )
-                           ) then
-                            -- illegal instruction
-                            lopIll <= '1';
-                        else
-                            -- Determine instruction type for loadResource.
-                            -- Load stage MUST check (lrI AND  
-                            lrR <= NOT Iflg;
-                            lrI <= Iflg;
-                            -- Decode funct3
-                            case funct3 is
-                            when "000" =>
-                                -- lrA determins add or subtract as per table above
-                                lopAdd <= '1';
-                            when "001"|"101" =>
-                                lopShift <= '1';
-                                opAr  <= funct7(5);
-                                --Right shift
-                                opRSh <= '1' when funct3 = "101" else
-                                         '0';
-                            when "010"|"011" =>
-                                lopCmp <= '1';
-                                opUnS  <= '1' when funct3 = "011" else
-                                          '0';
-                            when "100" =>
-                                lopXOR <= '1';
-                            when "110" =>
-                                lopOR <= '1';
-                            when "111" =>
-                                lopAND <= '1';
-                            end case;
-                        end if;
-                        -- END RV32I/64I Arithmetic operations
+            elsif (decodeRVIArithmetic(true)) then
 
-                    elsif (   ((opcode OR "0100000") = "0100011") -- Load/Store
-                           OR (opcode = "0110111") -- LUI
-                           OR (opcode = "0010111") ) then  -- AUIPC
-                        -- RV32I/64I load/store and LUI/LWU/AUIPC
-                        --
-                        -- funct3: UWH, D is W+H
-                        -- funct3   opcode       insn
-                        --          0110111     LUI
-                        --          0010111     AUIPC
-                        -- 000      0000011     LB
-                        -- 001      0000011     LH
-                        -- 010      0000011     LW
-                        -- 011      0000011     LD
-                        -- 100      0000011     LBU
-                        -- 101      0000011     LHU
-                        -- 110      0000011     LWU
-                        -- 000      0100011     SB
-                        -- 001      0100011     SH
-                        -- 010      0100011     SW
-                        -- 011      0100011     SD
-                        if ((opcode(5) = '1') AND (funct3(2) = '1')) then
-                            -- Illegal instruction
-                            lopIll <= '1';
-                        else
-                            case opcode is
-                            -- Load/Store
-                            when "0000011"|"0100011" =>
-                                -- LWU is also "110"
-                                opUnS <= funct3(2);
-                                -- 64-bit LD/SD
-                                opD   <= funct3(1) AND funct3(0);
-                                -- 32-bit instructions
-                                opW   <= funct3(1) AND NOT opD;
-                                opH   <= funct3(0) AND NOT opD;
-                                -- Operation load/store
-                                lopLoad  <= NOT opcode(5);
-                                lopStore <= opcode(5);
-                                lrI      <= lopLoad;
-                                lrS      <= lopStore;
-                            when "0110111"|"0010111" =>
-                                -- LUI/AUIPC
-                                lopLoad <= '1';
-                                -- U or UPC type?
-                                lrU     <= opcode(5);
-                                lrUPC   <= NOT opcode(5);
-                            end case;
-                        end if;
-                        -- END RV32I/64I load/store and LUI/LWU/AUIPC
+            elsif (decodeRVILoadStore(true)) then  -- AUIPC
 
-                    elsif ( ((opcode OR "0001000") = "0111011") -- Only these bits on
-                         AND (funct7 = "0000001")) then
-                        -- Essential mask 011_011
-                        -- RV32M/RV64M operations
-                        -- W operations: 011w011
-                        -- funct7   funct3  opcode      insn    opcode-w=1  Notes
-                        -- 0000001  000     011w011     MUL     MULW
-                        -- 0000001  001     011w011     MULH                Upper XLEN bits for 2*XLEN product
-                        -- 0000001  010     011w011     MULHSU              Same, r1 signed * r2 unsigned
-                        -- 0000001  011     011w011     MULHU               Same, r1 and r2 both unsigned
-                        -- 0000001  100     011w011     DIV     DIVW
-                        -- 0000001  101     011w011     DIVU    DIVUW
-                        -- 0000001  110     011w011     REM     REMW
-                        -- 0000001  111     011w011     REMU    REMUW
-                        -- extract W bit
-                        opW <= opcode(3);
-                        if ( (opW = '1') AND (funct3(2) = '0') AND (funct3 /= "000") ) then
-                            -- illegal instruction
-                            lopIll <= '1';
-                        else
-                            -- funct3 = 0xx mul, 1xx div
-                            lopMUL <= NOT funct3(2);
-                            lopDIV <= funct3(2);
-                            -- Much more compact than if statements
-                            -- Half-word
-                            case funct3 is
-                            when "001"|"010"|"011" =>
-                                opH <= '1';
-                            end case;
-                            case funct3 is
-                            -- Unsigned
-                            when "010"|"011"|"101"|"111" =>
-                                opUnS <= '1';
-                            end case;
-                            -- Remainder
-                            case funct3 is
-                            when "110"|"111" =>
-                                opRem <= '1';
-                            end case;
-                            -- MULHSU
-                            opHSU <= '1' when funct3 = "010" else
-                                     '0';
-                        end if;
-                        -- END RV32M/64M
-                    end if;
+            elsif (decodeRVIBranch(true)) then
+            
+            elsif (decodeRVM(true)) then
+
             -- todo:  handle handshake and data passing            
             elsif (busyIn = '0') then
                 -- The next stage is not busy, so send it data
@@ -381,6 +424,7 @@ begin
                 -- Register has just been flushed
                 stbR <= '0';
             end if;
-        end if;
-    end process add;
+        end if; -- rising clock edge
+    end process decoder;
 end riscv_decoder;
+

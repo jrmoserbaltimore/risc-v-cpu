@@ -25,23 +25,24 @@ architecture quickdiv_divider of e_divider_shifter is
     alias opRSh : std_ulogic is opFlags(6);
     
     signal outReg : std_ulogic_vector((XLEN*2)-1 downto 0);
-    -- 2^x exponent look-up table
-    type expLUT is array (natural range <>) of std_ulogic_vector(XLEN-1 downto 0);
-    signal shiftLUT : explut(XLEN-1 downto 0); 
+
 begin
 
-    LookUpTable: for i in XLEN-1 downto 0 generate
-        shiftLUT(i) <= std_logic_vector(to_unsigned(2**i, XLEN-1));
-    end generate;
-
-    -- Shift multiplies by a power of 2, so is a shift left.
-    -- The overflow goes into R and can be OR'd with the result
-    -- of a non-arithmetic shift to produce a rotation.
-    --
-    -- A right-shift needs to reverse A into Q, perform the
-    -- multiplication, and then reverse Q and R separately.
     Q <= outReg(XLEN-1 downto 0);
     R <= outReg((XLEN*2)-1 downto 0);
 
-    -- TODO:  Implement
+    -- TODO:  Implement Quick-Div CLZ
+    -- XXX:  Is the CLZ-and-shift viable versus using a shifter
+    --       AS a zero counter?  e.g.:
+    --
+    --       aaaa bbbb
+    --         |   |    sel: shift left 4 if (aaaa = 0000)
+    --       aabb
+    --         |        sel: shift left 2 if (aa = 00)
+    --        ab
+    --         |        sel: shift left 1 if (a = 0)
+    --         a
+    --         |        sel: if (a = 0) switch to div-by-zero logic
+    --
+    --      Note that SEL can be banked into a register and give you the shamt 
 end quickdiv_divider;

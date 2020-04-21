@@ -188,7 +188,8 @@ begin
 end xilinx_dsp48e1_alu;
 
 
--- DSP wrapper to provide add/sub/mul/div with a simple interface 
+-- DSP wrapper to provide add/sub/mul/div with a simple interface
+-- iDEA doesn't implement a divider, so we're on our own here. 
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
@@ -255,8 +256,15 @@ architecture dsp48e1_wrap of e_dsp48e1_wrap is
     alias opD   : std_ulogic is opFlags(3);
     alias opUnS : std_ulogic is opFlags(4);
     alias opHSU : std_ulogic is opFlags(5);
+    
+    -- Inputs
+     
 begin
 
-   --DSP: DSP48E1
+    --DSP: DSP48E1
+    -- FIXME:  Figure out the right pipeline parameters to maximize performance.
+    --
+    -- - No pattern detection
+    -- - Multiplier and A:B 48-bit adder enabled
 
 end architecture;
