@@ -109,6 +109,13 @@ architecture alu of e_alu is
     alias sxl    : std_ulogic_vector(1 downto 0)  is mstatus(35 downto 34);
     alias uxl    : std_ulogic_vector(1 downto 0)  is mstatus(35 downto 34);
     signal xlenC : std_ulogic_vector(1 downto 0);
+    
+    -- In from adder
+    signal adderBusy   : std_ulogic;
+    signal adderStbOut : std_ulogic; -- Adder has data ready
+    -- Out to Adder
+    signal adderStb    : std_ulogic := '0';
+    signal adderBusyOut : std_ulogic := '0'; -- Can't take data from adder right now
 begin
     -- FIXME:  make the adder type configurable
     adder: entity e_binary_adder(speculative_han_carlson_adder)
@@ -116,13 +123,23 @@ begin
         (
             XLEN => XLEN
         )
-        port map (
+        port map
+        (
+            -- Control
+            Clk      => Clk,
+            Rst      => Rst,
+            Speculate => '1',
+            Stb      => adderStb,
+            Busy     => adderBusy,
+            -- Input
             A        => rs1,
             B        => rs2,
             Sub      => opAr,
-            Clk      => Clk,
-            Rst      => Rst,
+            -- Output
+            StbOut   => adderStbOut,
+            BusyOut  => adderBusyOut,
             S        => addsubOut
+            -- Control
         );
     -- XLEN will be 32, 64, or 128, and will instantiate a shifter
     -- that many bits wide.

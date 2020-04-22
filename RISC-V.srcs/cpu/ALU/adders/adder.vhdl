@@ -50,16 +50,22 @@ entity e_binary_adder is
     generic
     (
         XLEN        : natural;
-        Cycles      : natural := 1;
-        Speculative : boolean := false
+        Cycles      : natural := 1
     );
     port(
+        -- Control port
+        Clk      : in  std_ulogic;
+        Rst      : in  std_ulogic;
+        Speculate: in  std_ulogic;
+        Stb      : in  std_ulogic;
+        Busy     : out std_ulogic;
+        -- Data input
         A        : in  std_ulogic_vector(XLEN-1 downto 0);
         B        : in  std_ulogic_vector(XLEN-1 downto 0);
         Sub      : in  std_ulogic;
-        Clk      : in  std_ulogic;
-        -- Reset cycle count.  First cycle for a new computation.
-        Rst      : in  std_ulogic;
+        -- Data output
+        StbOut   : out std_ulogic;
+        BusyOut  : in std_ulogic;
         --Cout     : out std_ulogic;
         S        : out std_ulogic_vector(XLEN-1 downto 0)
     );
