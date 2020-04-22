@@ -111,7 +111,7 @@ architecture alu of e_alu is
     signal xlenC : std_ulogic_vector(1 downto 0);
 begin
     -- FIXME:  make the adder type configurable
-    adder: entity e_binary_adder(han_carlson_adder)
+    adder: entity e_binary_adder(speculative_han_carlson_adder)
         generic map
         (
             XLEN => XLEN
@@ -122,8 +122,7 @@ begin
             Sub      => opAr,
             Clk      => Clk,
             Rst      => Rst,
-            S        => addsubOut,
-            Complete => Complete
+            S        => addsubOut
         );
     -- XLEN will be 32, 64, or 128, and will instantiate a shifter
     -- that many bits wide.
@@ -133,8 +132,8 @@ begin
     )
     port map (
         Din        => rs1,
-        Shift      => rs2(integer(ceil(log2(real(XLEN))))-1 downto 0),
-        opFlags    => (opRSh, opAr, opD, opW),
+        Shift      => rs2(integer(ceil(log2(real(XLEN)))) downto 0),
+        opFlags    => (opRSh, opAr),
         Dout       => barrelOut
     );
 

@@ -27,7 +27,7 @@ end e_binary_adder_pg_black_cell;
 
 architecture binary_adder_pg_black_cell of e_binary_adder_pg_black_cell is
 begin
-    Pout <= P AND Gin AND Pin;
+    Pout <= P AND Pin;
     Gout <= (P AND Gin) OR G;
 end binary_adder_pg_black_cell;
 

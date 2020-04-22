@@ -47,8 +47,11 @@ use IEEE.std_logic_1164.all;
 -- SUB is xor'd with the subtrahend, and is Cin for the bit-0
 -- full adder.
 entity e_binary_adder is
-    generic ( XLEN      : natural;
-              Cycles    : natural := 1
+    generic
+    (
+        XLEN        : natural;
+        Cycles      : natural := 1;
+        Speculative : boolean := false
     );
     port(
         A        : in  std_ulogic_vector(XLEN-1 downto 0);
@@ -58,8 +61,7 @@ entity e_binary_adder is
         -- Reset cycle count.  First cycle for a new computation.
         Rst      : in  std_ulogic;
         --Cout     : out std_ulogic;
-        S        : out std_ulogic_vector(XLEN-1 downto 0);
-        Complete : out std_ulogic
+        S        : out std_ulogic_vector(XLEN-1 downto 0)
     );
 end e_binary_adder;
 
@@ -73,7 +75,6 @@ begin
     begin
         if (rising_edge(Clk)) then
             -- single-cycle
-            Complete <= Rst;
             if (Rst = '1') then
                 if (Sub = '0') then
                     S <= std_logic_vector(unsigned(A) + unsigned(B));

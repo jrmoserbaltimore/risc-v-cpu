@@ -94,37 +94,42 @@ use work.e_binary_adder_pg_grey_cell;
 -- Subtraction is A - B
 architecture speculative_han_carlson_adder of e_binary_adder is
     constant LastStage : natural := integer(ceil(log2(real(XLEN))));
-    type pg is array (LastStage downto -1) of std_ulogic_vector(XLEN downto 0);
-    signal p_tree : pg;
-    signal g_tree : pg;
+    type pg is array (LastStage downto -1) of std_ulogic_vector(XLEN-1 downto 0);
+    signal p_tree : pg := (others => (others => '0'));
+    signal g_tree : pg := (others => (others => '0'));
     
-    signal err : std_ulogic;
+    signal err : std_ulogic := '0';
 
-    signal SpeculateP : std_ulogic_vector(XLEN-1 downto 0);
-    signal SpeculateG : std_ulogic_vector(XLEN-1 downto 0);
-    signal SpeculateGin : std_ulogic_vector(XLEN-1 downto 0);
-    signal Bs : std_ulogic_vector(XLEN-1 downto 0);
+    signal SpeculateG : std_ulogic_vector(XLEN-1 downto 0) := (others => '0');
+    signal Bs : std_ulogic_vector(XLEN-1 downto 0) := B XOR Sub;
 
     -- Calculate both in parallel in case error stage kicks in.
     -- The lower HALF is always correct in the speculative stage,
     -- so we only correct the upper half.
-    signal SSpeculative : std_ulogic_vector(XLEN-1 downto 0); 
-    signal SAccurate : std_ulogic_vector(XLEN-1 downto (XLEN/2));
+    signal SSpeculative : std_ulogic_vector(XLEN-1 downto 0) := (others => '0'); 
+    signal SAccurate : std_ulogic_vector(XLEN-1 downto XLEN/2) := (others => '0');
 begin
 
+    ----------------
+    -- Adder Tree --
+    ----------------
     -- Sets the top of the tree
-    adder_bits: for i in 0 downto XLEN-1 generate
+    adder_bits: for i in XLEN-1 downto 1 generate
     begin
         p_tree(-1)(i) <= A(i) XOR Bs(i);
            -- Carry in the Sub bit
-        g_tree(-1)(i) <=  A(i) AND Bs(i) when i /= 0 else
-                         (A(i) AND Bs(i)) OR (p_tree(-1)(i) AND Sub);
+        g_tree(-1)(i) <= A(i) AND Bs(i);
     end generate;
+    
+    -- Carry the Sub bit in.
+    p_tree(-1)(0) <= (A(0) XOR Bs(0)) XOR Sub;
+    g_tree(-1)(0) <= (A(0) AND Bs(0)) OR ((A(0) XOR Bs(0)) AND Sub); 
 
-    -- All but the last stage
-    adder_stages: for j in (LastStage-1) downto 0 generate    
+    -- All stages
+    adder_stages: for j in LastStage downto 0 generate
     begin
-        cells: for i in (XLEN-1) downto 0 generate
+        -- The G tree for the MSB generates the carry bit, but we don't care in RISC-V
+        cells: for i in (XLEN-1) downto 0 generate 
         begin
             -- Horrendous unreadable math please help
             black_cells: if (
@@ -143,9 +148,9 @@ begin
                         Gout => g_tree(j)(i)
                     );
                 -- //Pout <= P and Pin and Gin
-                -- p_tree(j)(i) <= p_tree(j-1)(i) AND p_tree(j-1)(i-2**j) AND g_tree(j-1)(i-2**j);
+                --p_tree(j)(i) <= p_tree(j-1)(i) AND g_tree(j-1)(i-2**j) AND p_tree(j-1)(i-2**j);
                 -- //Gout <= (P and Gin) or G
-                -- g_tree(j)(i) <= (p_tree(j-1)(i) AND g_tree(j-1)(i-2**j)) OR g_tree(j-1)(i);    
+                --g_tree(j)(i) <= (p_tree(j-1)(i) AND g_tree(j-1)(i-2**j)) OR g_tree(j-1)(i);    
             end generate; -- black cells
 
             -- The last in each row is a gray cell.  j stops before the last row, so
@@ -164,6 +169,8 @@ begin
                         Gin  => g_tree(j-1)(i-2**j),
                         Gout => g_tree(j)(i)
                     );
+                    -- Pass down the propagate carry
+                    p_tree(j)(i) <= p_tree(j-1)(i);
             end generate; -- gray cells
             
             grey_cells_end: if (
@@ -175,9 +182,11 @@ begin
                     port map(
                         P    => p_tree(j-1)(i),
                         G    => g_tree(j-1)(i),
-                        Gin  => g_tree(j-1)(i-2**j),
+                        Gin  => g_tree(j-1)(i-1),
                         Gout => g_tree(j)(i)
                     );
+                    -- Pass down the propagate carry
+                    p_tree(j)(i) <= p_tree(j-1)(i);
             end generate; -- gray cells
 
             -- pass down
@@ -189,91 +198,88 @@ begin
                 g_tree(j)(i) <= g_tree(j-1)(i);
             end generate; -- no cells
         end generate; -- cells
-
     end generate; -- adder stages
+    
+    -- e.g. for [63:32]
+    acc_sum: for i in XLEN-1 downto XLEN/2 generate
+        -- XOR prior bit's generated with current bit's original propagated carry
+        
+        SAccurate(i) <= g_tree(LastStage)(i-1) XOR p_tree(-1)(i);
+    end generate;
 
-    -- FIXME:  This may still be very broken
+    ------------------------
+    -- Speculative Result --
+    ------------------------
 
-    -- Speculative stage
+    -- Speculative stage is the whole thing
     speculative_stage: for i in (XLEN-1) downto 0 generate
     begin
-        gray_cells: if (i mod 2 = 0) generate
+        gray_cells: if ((i mod 2 = 0) AND i > 0) generate
         begin
             -- Skip the second-to-last row
             cell: entity e_binary_adder_pg_grey_cell(binary_adder_pg_grey_cell)
                     port map(
-                        P    => p_tree(i)(LastStage-2),
-                        G    => g_tree(i)(LastStage-2),
-                        Gin  => g_tree(i-2)(LastStage-2),
-                        Gout => g_tree(i)(LastStage)
+                        P    => p_tree(LastStage-2)(i),
+                        G    => g_tree(LastStage-2)(i),
+                        Gin  => g_tree(LastStage-2)(i-1),
+                        Gout => SpeculateG(i)
                     );
+                    -- Pass down the propagate carry
         end generate;
-        -- XOR with next stage's propagated carry
-        SSpeculative(i) <= g_tree(i)(LastStage) XOR p_tree(i+1)(-1);
+        -- Bring the other bits down
+        pass: if ((i mod 2 = 1) OR i = 0) generate
+            SpeculateG(i) <= g_tree(LastStage-2)(i);
+        end generate;
+        -- XOR prior bit's generated with current bit's propagated carry
+        gen_speculative_sum: if ((Speculative OR (i < XLEN/2)) AND i > 0) generate
+            SSpeculative(i) <= SpeculateG(i-1) XOR p_tree(-1)(i);
+        end generate;
     end generate;
+    -- Bit zero is just the propagated carry from A0+B0
+    SSpeculative(0) <= p_tree(-1)(0);
 
-    -- only the upper half can be wrong
-    accurate_stage: for i in (XLEN-1) downto (XLEN/2) generate
-    begin
-        gray_cells: if (i mod 2 = 0) generate
-        begin
-            cell: entity e_binary_adder_pg_grey_cell(binary_adder_pg_grey_cell)
-                    port map(
-                        P    => p_tree(i)(LastStage-1),
-                        G    => g_tree(i)(LastStage-1),
-                        Gin  => g_tree(i-2)(LastStage-1),
-                        Gout => g_tree(i)(LastStage)
-                    );
-        end generate;
-        -- XOR with next stage's propagated carry
-        SAccurate(i) <= g_tree(i)(LastStage) XOR p_tree(i+1)(-1);
-    end generate;
+    ------------
+    -- Setup ---
+    ------------
     
     -- Invert B when subtracting
-    Bs <= B XOR (others => Sub);
-    -- Ensure the XOR for the MSB always just passes G
-    p_tree(XLEN)(-1) <= '0';
-    
-    -- The half LSB always come out correct, so always pass to S
-    S((XLEN/2)-1 downto 0) <= SSpeculative((XLEN/2)-1 downto 0);
+    Bs <= B XOR Sub;
 
-    S(XLEN-1 downto XLEN/2) <= SSpeculative(XLEN-1 downto XLEN/2) when err = '0' else
-                               SAccurate(XLEN-1 downto XLEN/2);
+    not_speculative: if (Speculative = false) generate
+        SSpeculative(XLEN-1 downto XLEN/2) <= SAccurate;
+        S <= SSpeculative;
+    end generate;
+    ---------------------
+    -- Error Detection --
+    ---------------------
     
-    -- Speculation:  Error check
-    add: process(all) is
-        variable errCalc : std_ulogic_vector((XLEN/4)-1 downto 0);
-        variable delay   : natural := 0;
-    begin
-        -- Error calculation
-        for i in (XLEN/4) to 1 loop
-            errCalc(i) := g_tree((2*i)-1)(LastStage-2) AND p_tree((2*i)+(XLEN/2)-1)(LastStage-2);  
-        end loop;
-        -- If any of the above is wrong, we have error!
-        err <= OR errCalc;
-
-        if (rising_edge(clk)) then
-            -- Reset the delay to completion
-            if (Rst = '1') then
-                delay := Cycles;
+    -- Speculative adder
+    is_speculative: if (Speculative) generate
+         -- The half LSB always come out correct, so always pass to S
+        S((XLEN/2)-1 downto 0) <= SSpeculative((XLEN/2)-1 downto 0);
+        
+        -- Speculation:  Error check
+        add: process(clk) is
+            variable errCalc : std_ulogic_vector((XLEN/4)-1 downto 0);
+            variable delay   : natural := 0;
+        begin
+            if (rising_edge(clk)) then
+                -- Error calculation
+                for i in (XLEN/4) to 1 loop
+                    errCalc(i) := g_tree(LastStage-2)((2*i)-1) AND p_tree(LastStage-2)((2*i)+(XLEN/2)-1);
+                end loop;
+                -- If any of the above is wrong, we have error!
+                
+                err <= g_tree(LastStage-2)((2*1)-1) AND p_tree(LastStage-2)((2*1)+(XLEN/2)-1);
+                if (err = '1') then
+                    -- Swap to accurate output
+                    S(XLEN-1 downto XLEN/2) <= SAccurate(XLEN-1 downto XLEN/2);
+                else
+                    --err <= '0';
+                    S(XLEN-1 downto XLEN/2) <= SSpeculative(XLEN-1 downto XLEN/2);
+                    --delay := 0;
+                end if;
             end if;
-            if (err = '1' and delay = 0) then
-                -- When error, delay 1.25% of the normal cycle length
-                --
-                -- Most papers say delay one clock cycle; however, reddy et al
-                -- show a delay of 13.540ns for speculative 64-bit calculations,
-                -- and a delay of  16.032ns for the error detection and
-                -- correction stage.  13.540*2 > 16.032 > 13.540, so
-                -- the delay seems to be 118% of a clock cycle.
-                -- 1.25 is a 6% margin of error.
-                delay := 2; --integer(ceil(1.25 * Cycles));
-                Complete <= '0';
-            elsif (delay > 0) then
-                delay := delay - 1;
-                Complete <= '1' when delay = 0 else
-                            '0';
-            end if;
-        end if;
-    end process add;
-    
+        end process add;
+    end generate;
 end speculative_han_carlson_adder;

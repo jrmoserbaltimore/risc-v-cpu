@@ -18,7 +18,7 @@ void main(int argc, char *argv[])
     for (int j=0; j<=log2(xlen); j++)
     {
         printf("Stage %2d: ", j);
-        for (int i=xlen-1; i>=0; i--)
+        for (int i=xlen-2; i>=0; i--)
         {
             // black cells
             if (
@@ -61,5 +61,23 @@ void main(int argc, char *argv[])
             }
         }
         printf("\n");
+        if (j==log2(xlen))
+        {
+            printf("\nSpeculative stage cutting out stage %2d\n",j-1);
+            
+            printf("Stage %2d: ", j-1);
+            for (int i=xlen-2; i>=0; i--)
+            {
+                if ((i % 2) == 1)
+                {
+                    printf("p:%2d          ",i);
+                }
+                if ((i % 2) == 0)
+                {
+                    printf("g:%2d=>(%2d,%2d) ",i,(int)log2(xlen)-2,i-1);
+                }
+            }
+            printf("\n");
+        }
     }
 }
