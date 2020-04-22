@@ -13,6 +13,7 @@
 -- LinkedIn.
 library IEEE;
 use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
 use IEEE.math_real."ceil";
 use ieee.math_real."log2";
 use work.e_alu;
@@ -115,29 +116,15 @@ architecture xilinx_dsp48e1_alu of e_alu is
     alias opRem : std_ulogic is opFlags(8);
     
     signal barrelOut : std_ulogic_vector(XLEN-1 downto 0);
+    
+    -- Force DSP48
+    attribute use_dsp48 : string;
+    attribute use_dsp48 of rs1 : signal is "yes";
+    attribute use_dsp48 of rs2 : signal is "yes";
+    attribute use_dsp48 of rd : signal is "yes";
 begin
         --XLEN : natural;
         --FmaxFactor : positive := 1
-
-    -- Adder-Subtractor uses the DSP's adder and accumulator.
-    -- 64-bit requires Two DSP48E1 slices and 128-bit requires
-    -- three, as they are 48-bit adds with carry output.
-    --
-    -- Han-Carlson adder at 128-bits incurs 17 gate delays;
-    -- 64-bits incurse 15; 32-bits incurs 13. At 140ps total
-    -- delay per gate, this is 420MHz for 128-bit; 160ps
-    -- for 420MHz at 64-bit; 180ps for 420MHz at 32-bit.
-    -- 
-    -- A speculative Han-Carlson adder can operate 10% faster
-    -- in most cases, costing an extra clock cycle in rare
-    -- cases of error.
-    --
-    -- These figures represent the maximum average delay per
-    -- gate, including routing and gate delay, for a fabric
-    -- adder to reach near-maximum speeds on a Spartan-7.
-    -- DSP may reduce area, power consumption, and delay.
-
-    --  TODO: dsp48e1_op <= ADD
 
     -- The DSP contains no large barrel shifter.  A 128-bit
     -- reversible barrel shifter produces 12 gate delays, but
@@ -153,16 +140,11 @@ begin
     port map (
         Din        => rs1,
         Shift      => rs2(integer(ceil(log2(real(XLEN))))-1 downto 0),
-        opFlags    => (opRSh, opAr, opD, opW),
+        opFlags    => (opRSh, opAr),
         Dout       => barrelOut
     );
-    -- TODO:  take current XLEN into account and sign-extend
-    --rd <= barrelOut when lopShift = '1';
-    
-    -- Bitwise operations are supported by the DSP up to 48 bits.
-    -- fMax is unlikely to be bound by fabric bitwise operations,
-    -- but the inputs will already be tied to the DSP and so only
-    -- a change of DSP ALU operation is necessary.
+    -- FIXME:  take current XLEN into account and sign-extend?  Should 
+    -- do that in a prior stage.
     --
     -- The barrel shifter routes around the DSP and into a muxer,
     -- so the input fans out to either the DSP or the shifter.
@@ -174,123 +156,78 @@ begin
     -- Multiplier uses partial product and accumulator feedback,
     -- acting as a high-frequency multi-cycle instruction.
 
-
-    -- Divider obtains and caches the remainder and product to
-    -- catch the RISC-V M specified sequence:
-    --   DIV[U] rdq, rs1, rs2
-    --   REM[U] rdq, rs1, rs2
-    -- This sequence is fused together into a single divide.
-    --
-    -- Various divider components are possible, e.g. Paravartya.
-    -- The ALU requires a divider implementation, as the DSP
-    -- does not provide one.
-
+    compute: process(clk) is
+    begin
+        if (rising_edge(clk)) then
+            if (lopAdd = '1') then
+                -- Adder-Subtractor uses the DSP's adder.
+                -- Arithmetic = SUB
+                case opAr is
+                    when '0' => rd <= std_logic_vector(signed(rs1) + signed(rs2));
+                    when '1' => rd <= std_logic_vector(signed(rs1) - signed(rs2));
+                end case;
+            elsif (lopShift = '1') then
+                -- No shift operation in DSP48
+                rd <= barrelOut;
+            elsif (lopCmp = '1') then
+                -- Normal approach is to 
+                case opUnS is
+                    when '0' =>
+                        if (unsigned(rs1) < unsigned(rs2)) then
+                            rd <= (0 => '1', others => '0');
+                        else
+                            rd <= (0 => '0', others => '0');
+                        end if;
+                    when '1' =>
+                        if (signed(rs1) < signed(rs2)) then
+                            rd <= (0 => '1', others => '0');
+                        else
+                            rd <= (0 => '0', others => '0');
+                        end if;
+                end case;
+            elsif (lopAND = '1') then
+                -- fMax is unlikely to be bound by fabric bitwise operations,
+                -- but the inputs will already be tied to the DSP and so only
+                -- a change of DSP ALU operation is necessary.
+                rd <= rs1 AND rs2;
+            elsif (lopOR = '1') then
+                rd <= rs1 OR rs2;
+            elsif (lopXOR = '1') then
+                rd <= rs1 OR rs2;
+            elsif (lopMUL = '1') then
+                -- FIXME:  How can I tell when this is finished?
+                if (opH = '0') then
+                    -- Uper half only
+                    -- FIXME:  actually return the upper half
+                    if (opUnS = '1') then
+                        rd <= std_logic_vector(unsigned(rs1) * unsigned(rs2));
+                    elsif (opHSU = '1') then
+                        -- Invalid
+                        --rd <= std_logic_vector(signed(rs1) * unsigned(rs2));
+                    else
+                        rd <= std_logic_vector(signed(rs1) * signed(rs2));
+                    end if;
+                else
+                    rd <= std_logic_vector(unsigned(rs1) * unsigned(rs2));
+                end if;
+            elsif (lopDIV = '1') then
+                -- FIXME:  paravartya or quick-div
+                
+                -- Divider obtains and caches the remainder and product to
+                -- catch the RISC-V M specified sequence:
+                --   DIV[U] rdq, rs1, rs2
+                --   REM[U] rdq, rs1, rs2
+                -- This sequence is fused together into a single divide.
+                --
+                -- Various divider components are possible, e.g. Paravartya.
+                -- The ALU requires a divider implementation, as the DSP
+                -- does not provide one.
+                if (opRem = '1') then
+                    -- Remainder
+                else
+                    -- Quotient
+                end if;
+            end if;
+        end if;
+    end process;
 end xilinx_dsp48e1_alu;
-
-
--- DSP wrapper to provide add/sub/mul/div with a simple interface
--- iDEA doesn't implement a divider, so we're on our own here. 
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
-use work.e_binary_adder;
-
-Library UNISIM;
-use UNISIM.vcomponents.all;
-
-entity e_dsp48e1_wrap is
-    generic
-    (
-        XLEN : natural
-    );
-    port
-    (
-        -- Only needs to tell prior stage it's busy;
-        -- internal signals connect to forward stages
-        clk  : in  std_ulogic;
-        stb  : in  std_ulogic; 
-        busy : out std_ulogic;
-        -- Reset signal propagates after CPU reset.
-        -- All recipients must dump their buffers.
-        rst  : in  std_ulogic;
-        -- Inputs
-        A    : in  std_ulogic_vector(XLEN-1 downto 0);
-        B    : in  std_ulogic_vector(XLEN-1 downto 0);
-        -- Function selector
-        -- 0: add
-        -- 1: subtract
-        -- 2: AND: AND, ANDI
-        -- 3: OR: OR, ORI
-        -- 4: XOR: XOR, XORI
-        -- 5: Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
-        -- 6: Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
-        logicOp : in  std_ulogic_vector(3 downto 0);
-        -- Operation flags
-        -- bit 0:  *B
-        -- bit 1:  *H
-        -- bit 2:  *W
-        -- bit 3:  *D
-        -- bit 4:  Unsigned
-        -- bit 5:  MULHSU
-        opflags : in  std_ulogic_vector(8 downto 0);
-        -- Multiplier output can be twice the XLEN
-        result    : out std_ulogic_vector((XLEN*2)-1 downto 0);
-        -- Remainder can be the size of divisor 
-        remainder : out std_ulogic_vector(XLEN-1 downto 0)
-    );
-end e_dsp48e1_wrap;
-
-architecture dsp48e1_wrap of e_dsp48e1_wrap is
-    -- Rearranging the functions doesn't bother the architecture
-    alias lopAdd   : std_ulogic is logicOp(0);
-    alias lopSub   : std_ulogic is logicOp(1);
-    alias lopAND   : std_ulogic is logicOp(2);
-    alias lopOR    : std_ulogic is logicOp(3);
-    alias lopXOR   : std_ulogic is logicOp(4);
-    alias lopMUL   : std_ulogic is logicOp(5);
-    alias lopDIV   : std_ulogic is logicOp(6);
-    
-    alias opB   : std_ulogic is opFlags(0);
-    alias opH   : std_ulogic is opFlags(1);
-    alias opW   : std_ulogic is opFlags(2);
-    alias opD   : std_ulogic is opFlags(3);
-    alias opUnS : std_ulogic is opFlags(4);
-    alias opHSU : std_ulogic is opFlags(5);
-    
-    -- Inputs
-     
-begin
-
-    --DSP: DSP48E1
-    -- FIXME:  Figure out the right pipeline parameters to maximize performance.
-    --
-    -- - No pattern detection
-    -- - Multiplier and A:B 48-bit adder enabled
---    DSP48E1_inst : DSP48E1
---    generic map (
---       -- Feature Control Attributes: Data Path Selection
---      A_INPUT => "DIRECT",
---        B_INPUT => "DIRECT",
---        USE_DPORT => FALSE,
---        USE_MULT => "DYNAMIC",
---        USE_SIMD => "ONE48",
---        -- Pipeline configuration
---        ACASCREG => 1,
---        ADREG => 1,
---        ALUMODEREG => 1,
---        AREG => 1,
---        BCASCREG => 1,
---        BREG => 1,
---        CARRYINREG => 1,
---        CARRYINSELREG => 1,
---        CREG => 1,
---        DREG => 1,
---        INMODEREG => 1,
---        MREG => 1,
---        OPMODEREG => 1,
---        PREG => 1
---    )
---    port map (
---        -- TODO:  Define port map
---    );
-end architecture;

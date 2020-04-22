@@ -1,0 +1,7 @@
+-- vim: sw=4 ts=4 et
+-- Ladner-Fischer adder
+--
+-- This is a parallel prefix ladner-fischer adder as per
+-- http://venividiwiki.ee.virginia.edu/mediawiki/index.php/ClassECE6332Fall12Group-Fault-Tolerant_Reconfigurable_PPA
+--
+--
