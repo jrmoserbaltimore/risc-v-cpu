@@ -5,3 +5,4 @@
 --
 -- Performs variant and environment decoding (e.g. determining correct
 -- XLEN context, sign extension, processor feature settings)
+

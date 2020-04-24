@@ -10,27 +10,98 @@ use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 use work.e_binary_adder;
 
+-- Decoded information:
+--   - logicOp: operation type (ALU, flow control, mem, system)
+--   - operation flags (ALU flags that pass DIRECTLY to the ALU, etc.)
+--   - loadResource: data prep directions (whether to interpret r1 and
+--     r2 as registers, which type of immediate, whether to sign-extend,
+--     operation width, etc.)
+-- Theory:
+--   The loadResource flags tell the Load stage when to get rs1 (as
+--   argument 1), rs2 (as argument 2), or some particular immediate (as
+--   argument 1, 2, or 3).  The Load stage understands the fixed
+--   locations of rs1 and rs2; as well as various immediate value
+--   formats.
+--
+--   The Load stage must be instructed to sign extension as appropriate.
+--
+--   The Load stage passes the parameters here to the Execute stage,
+--   which will interpret logicOp and the operation flags to determine
+--   what exactyl to execute.  An ALU operation will generally pass
+--   logicOp(9 downto 0) directly to the ALU, along with the relevant
+--   information about how to operate on the arguments given.
+
 entity e_decoder is
     generic
     (
-        XLEN : natural
+        XLEN : natural;
+        RVM  : boolean := true
     );
     port
     (
-        -- Only needs to tell prior stage it's busy;
-        -- internal signals connect to forward stages
-        clk  : in  std_ulogic;
-        stb  : in  std_ulogic; 
-        busy : out std_ulogic;
+        -- Control port
+        Clk      : in  std_ulogic;
+        Rst      : in  std_ulogic;
+        Stb      : in  std_ulogic;
+        Busy     : out std_ulogic;
         -- Reset signal propagates after CPU reset.
         -- All recipients must dump their buffers.
-        rst  : in  std_ulogic;
+        -- Output handshake
+        StbOut   : out std_ulogic;
+        BusyOut  : in std_ulogic;
         -- Instruction to decode
         insn : in  std_ulogic_vector(31 downto 0);
         -- Context
         misa : in  std_ulogic_vector(31 downto 0);
         mstatus : in  std_ulogic_vector(XLEN-1 downto 0);
-        ring : in  std_ulogic_vector(1 downto 0)
+        ring : in  std_ulogic_vector(1 downto 0);
+        -- program counter
+        pc : in std_ulogic_vector(XLEN-2 downto 0);
+        ------------
+        -- Output --
+        ------------
+        -- What operation
+        -- ALU ops
+        -- 0: add, sub: ADD, ADDI, SUB; 64 ADDW, ADDIW, SUBW
+        -- 1: shift: SLL, SLLI, SRL, SRLI, SRA; 64 SLLIW, SRRIW, SRAIW
+        -- 2: Comparator (SLT, SLTU, SLTI, SLTIU)
+        -- 3: AND: AND, ANDI
+        -- 4: OR: OR, ORI
+        -- 5: XOR: XOR, XORI
+        --
+        -- Extension: M
+        -- 6: Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
+        -- 7: Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
+        --  
+        -- Non-ALU ops
+        -- 8: illegal instruction
+        --
+        -- Load/Store
+        -- 9: Load
+        -- 10: Store
+        logicOp      : out std_ulogic_vector(10 downto 0);
+        
+        -- Operation flags
+        -- bit 0:  *B
+        -- bit 1:  *H
+        -- bit 2:  *W
+        -- bit 3:  *D
+        -- bit 4:  Unsigned
+        -- bit 5:  Arithmetic (and Adder-Subtractor subtract)
+        -- bit 6:  Right-shift
+        -- bit 7:  MULHSU
+        -- bit 8:  DIV Remainder
+        opFlags      : out std_ulogic_vector(8 downto 0);
+        
+        -- Load resource:   Type        what to load
+        -- bit 0:  R-type   Register    (rs1, rs2)
+        -- bit 1:  I-type   Immediate   (rs1, insn[31:20] sign-extend)
+        -- bit 2:  S-Type   Store       (rs1, insn[31:25] & insn[11:7] sign-extended)
+        -- bit 3:  B-type   Branch      (rs1, rs2, insn[31] & insn[7] & insn[30:25] & insn[11:8] sign-extend)
+        -- bit 4:  U-type   Upper-Imm   (insn[31:12])
+        -- bit 5:  J-type   Jump        (insn[31] & insn[19:12] & insn[20] & insn[30:25] & insn[24:21] sign-extend)
+        -- bit 6:  U-type               AUIPC, LUI
+        loadResource : out std_ulogic_vector(5 downto 0)
     );
 end e_decoder;
 
@@ -49,7 +120,75 @@ end e_decoder;
 -- Stage 6:  memory fetch or write (for LOAD/STORE)
 -- Stage 7:  retire (write all registers)
 architecture riscv_decoder of e_decoder is
-    -- working set, either from input or buffered storage
+    alias lopAdd   : std_ulogic is logicOp(0);
+    alias lopShift : std_ulogic is logicOp(1);
+    alias lopCmp   : std_ulogic is logicOp(2);
+    alias lopAND   : std_ulogic is logicOp(3);
+    alias lopOR    : std_ulogic is logicOp(4);
+    alias lopXOR   : std_ulogic is logicOp(5);
+    alias lopMUL   : std_ulogic is logicOp(6);
+    alias lopDIV   : std_ulogic is logicOp(7);
+    alias lopIll   : std_ulogic is logicOp(8);
+    alias lopLoad  : std_ulogic is logicOp(9);
+    alias lopStore : std_ulogic is logicOp(10);
+
+    alias opB   : std_ulogic is opFlags(0);
+    alias opH   : std_ulogic is opFlags(1);
+    alias opW   : std_ulogic is opFlags(2);
+    alias opD   : std_ulogic is opFlags(3);
+    alias opUnS : std_ulogic is opFlags(4);
+    alias opAr  : std_ulogic is opFlags(5);
+    alias opRSh : std_ulogic is opFlags(6);
+    alias opHSU : std_ulogic is opFlags(7);
+    alias opRem : std_ulogic is opFlags(8);
+
+    alias lrR : std_ulogic is loadResource(0);
+    alias lrI : std_ulogic is loadResource(1);
+    alias lrS : std_ulogic is loadResource(2);
+    alias lrB : std_ulogic is loadResource(3);
+    alias lrU : std_ulogic is loadResource(4);
+    alias lrJ : std_ulogic is loadResource(5);
+    alias lrUPC : std_ulogic is loadResource(6);
+
+    -- Busy signal
+    signal iBusy : std_ulogic := '0';
+    signal oStb  : std_ulogic := '0';
+    alias oBusy is BusyOut;
+    -- Register
+    signal R    : std_ulogic := '0';
+    
+    signal insnReg : std_ulogic_vector(insn'LENGTH downto 0);
+    signal misaReg : std_ulogic_vector(misa'LENGTH downto 0);
+    signal mstatusReg : std_ulogic_vector(mstatus'LENGTH downto 0);
+    signal ringReg : std_ulogic_vector(ring'LENGTH downto 0);
+    
+    alias exA : std_ulogic is misa(0);
+    alias exB : std_ulogic is misa(1);
+    alias exC : std_ulogic is misa(2);
+    alias exD : std_ulogic is misa(3);
+    alias exE : std_ulogic is misa(4);
+    alias exF : std_ulogic is misa(5);
+    
+    alias exH : std_ulogic is misa(7);
+    alias exI : std_ulogic is misa(8);
+    
+    alias exM : std_ulogic is misa(12);
+    alias exN : std_ulogic is misa(13);
+    
+    alias exQ : std_ulogic is misa(16);
+    
+    alias exS : std_ulogic is misa(18);
+    
+    alias exU : std_ulogic is misa(20);
+    
+    alias exX : std_ulogic is misa(23);
+
+    -- Working set
+    signal AWk : std_ulogic_vector(XLEN-1 downto 0);
+    signal BWk : std_ulogic_vector(XLEN-1 downto 0);
+    signal SubWk : std_ulogic;
+    signal specWk : std_ulogic;
+        -- working set, either from input or buffered storage
     signal insnWk : std_ulogic_vector(insn'RANGE);
     signal misaWk : std_ulogic_vector(misa'RANGE);
     signal mstatusWk : std_ulogic_vector(mstatus'RANGE);
@@ -67,113 +206,10 @@ architecture riscv_decoder of e_decoder is
     alias sxl    : std_ulogic_vector(1 downto 0)  is mstatusWk(35 downto 34);
     alias uxl    : std_ulogic_vector(1 downto 0)  is mstatusWk(35 downto 34);
 
-    -- Output to next stage
-    signal stbOut : std_ulogic := '0';
-    signal busyIn : std_ulogic := '0';
-
     signal insnOut : std_ulogic_vector(insn'LENGTH downto 0);
     signal misaOut : std_ulogic_vector(misa'LENGTH downto 0);
     signal mstatusOut : std_ulogic_vector(mstatus'LENGTH downto 0);
     signal ringOut : std_ulogic_vector(ring'LENGTH downto 0);
-
-    -- Buffer
-    signal stbR   : std_ulogic := '0';
-
-    signal insnBuf : std_ulogic_vector(insn'LENGTH downto 0);
-    signal misaBuf : std_ulogic_vector(misa'LENGTH downto 0);
-    signal mstatusBuf : std_ulogic_vector(mstatus'LENGTH downto 0);
-    signal ringBuf : std_ulogic_vector(ring'LENGTH downto 0);
-    
-    -- Decoded information:
-    --   - logicOp: operation type (ALU, flow control, mem, system)
-    --   - operation flags (ALU flags that pass DIRECTLY to the ALU, etc.)
-    --   - loadResource: data prep directions (whether to interpret r1 and
-    --     r2 as registers, which type of immediate, whether to sign-extend,
-    --     operation width, etc.)
-    -- Theory:
-    --   The loadResource flags tell the Load stage when to get rs1 (as
-    --   argument 1), rs2 (as argument 2), or some particular immediate (as
-    --   argument 1, 2, or 3).  The Load stage understands the fixed
-    --   locations of rs1 and rs2; as well as various immediate value
-    --   formats.
-    --
-    --   The Load stage must be instructed to sign extension as appropriate.
-    --
-    --   The Load stage passes the parameters here to the Execute stage,
-    --   which will interpret logicOp and the operation flags to determine
-    --   what exactyl to execute.  An ALU operation will generally pass
-    --   logicOp(9 downto 0) directly to the ALU, along with the relevant
-    --   information about how to operate on the arguments given.
-
-    -- What operation
-    -- ALU ops
-    -- 0: add, sub: ADD, ADDI, SUB; 64 ADDW, ADDIW, SUBW
-    -- 1: shift: SLL, SLLI, SRL, SRLI, SRA; 64 SLLIW, SRRIW, SRAIW
-    -- 2: Comparator (SLT, SLTU, SLTI, SLTIU)
-    -- 3: AND: AND, ANDI
-    -- 4: OR: OR, ORI
-    -- 5: XOR: XOR, XORI
-    --
-    -- Extension: M
-    -- 6: Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
-    -- 7: Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
-    --  
-    -- Non-ALU ops
-    -- 8: illegal instruction
-    --
-    -- Load/Store
-    -- 9: Load
-    -- 10: Store
-    signal logicOp : std_ulogic_vector(10 downto 0);
-    alias lopAdd   : std_ulogic is logicOp(0);
-    alias lopShift : std_ulogic is logicOp(1);
-    alias lopCmp   : std_ulogic is logicOp(2);
-    alias lopAND   : std_ulogic is logicOp(3);
-    alias lopOR    : std_ulogic is logicOp(4);
-    alias lopXOR   : std_ulogic is logicOp(5);
-    alias lopMUL   : std_ulogic is logicOp(6);
-    alias lopDIV   : std_ulogic is logicOp(7);
-    alias lopIll   : std_ulogic is logicOp(8);
-    alias lopLoad  : std_ulogic is logicOp(9);
-    alias lopStore : std_ulogic is logicOp(10);
-
-    -- Operation flags
-    -- bit 0:  *B
-    -- bit 1:  *H
-    -- bit 2:  *W
-    -- bit 3:  *D
-    -- bit 4:  Unsigned
-    -- bit 5:  Arithmetic (and Adder-Subtractor subtract)
-    -- bit 6:  Right-shift
-    -- bit 7:  MULHSU
-    -- bit 8:  DIV Remainder
-    signal opFlags : std_ulogic_vector(8 downto 0);
-    alias opB   : std_ulogic is opFlags(0);
-    alias opH   : std_ulogic is opFlags(1);
-    alias opW   : std_ulogic is opFlags(2);
-    alias opD   : std_ulogic is opFlags(3);
-    alias opUnS : std_ulogic is opFlags(4);
-    alias opAr  : std_ulogic is opFlags(5);
-    alias opRSh : std_ulogic is opFlags(6);
-    alias opHSU : std_ulogic is opFlags(7);
-    alias opRem : std_ulogic is opFlags(8);
-    
-    -- Load resource:   Type        what to load
-    -- bit 0:  R-type   Register    (rs1, rs2)
-    -- bit 1:  I-type   Immediate   (rs1, insn[31:20] sign-extend)
-    -- bit 2:  S-Type   Store       (rs1, insn[31:25] & insn[11:7] sign-extended)
-    -- bit 3:  B-type   Branch      (rs1, rs2, insn[31] & insn[7] & insn[30:25] & insn[11:8] sign-extend)
-    -- bit 4:  U-type   Upper-Imm   (insn[31:12])
-    -- bit 5:  J-type   Jump        (insn[31] & insn[19:12] & insn[20] & insn[30:25] & insn[24:21] sign-extend)
-    -- bit 6:  U-type               AUIPC, 
-    signal loadResource : std_ulogic_vector(5 downto 0);
-    alias lrR : std_ulogic is loadResource(0);
-    alias lrI : std_ulogic is loadResource(1);
-    alias lrS : std_ulogic is loadResource(2);
-    alias lrB : std_ulogic is loadResource(3);
-    alias lrU : std_ulogic is loadResource(4);
-    alias lrJ : std_ulogic is loadResource(5);
-    alias lrUPC : std_ulogic is loadResource(6);
 
 begin
     decoder: process(clk) is
@@ -339,6 +375,10 @@ begin
         impure function decodeRVM (decode: boolean) return boolean is
             variable decoded : boolean := false;
         begin
+            -- Not supported, so don't decode
+            if ((NOT RVM) OR (exM = '0')) then
+                return false;
+            end if;
             if ( ((opcode OR "0001000") = "0111011") -- Only these bits on
                      AND (funct7 = "0000001")) then
                 -- Essential mask 011_011
@@ -388,7 +428,7 @@ begin
                 -- Reset, completely.  Don't care about anything.
                 busy       <= '0';
                 stbOut     <= '0';
-                stbR       <= '0';
+                R          <= '0';
             -- FIXME:  must move the decoding stage to interact properly
             -- with the handshaking stage below
             elsif (decodeRVIArithmetic(true)) then
@@ -400,9 +440,9 @@ begin
             elsif (decodeRVM(true)) then
 
             -- todo:  handle handshake and data passing            
-            elsif (busyIn = '0') then
+            elsif (oBusy = '0') then
                 -- The next stage is not busy, so send it data
-                if (stbR = '0') then -- FIXME:  AND ready to send data
+                if (R = '0') then -- FIXME:  AND ready to send data
                     -- Nothing in the strobe buffer, send output when ready
                     -- signal data strobe
                     stbOut <= stb;
@@ -422,7 +462,7 @@ begin
                 -- we're not busy because input isn't busy
                 busy <= '0';
                 -- Register has just been flushed
-                stbR <= '0';
+                R <= '0';
             end if;
         end if; -- rising clock edge
     end process decoder;

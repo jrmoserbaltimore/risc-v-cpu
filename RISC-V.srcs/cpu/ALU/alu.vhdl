@@ -1,6 +1,6 @@
 -- vim: sw=4 ts=4 et
 --
--- Arithmetic logic unit
+-- Arithmetic logic unit (Fabric/ASIC)
 --
 -- The ALU pointedly does not complain about invalid input.
 -- Don't send invalid input.
@@ -21,7 +21,10 @@ entity e_alu is
     generic
     (
         XLEN : natural := 64;
-        FmaxFactor : positive := 1
+        FmaxFactor : positive := 1;
+        Adder : string := "Han-Carlson"; -- or Ladner-Fischer
+        Multiplier : string := "Dadda";
+        Divider : string := "Quick-Div"
     );
     port
     (
@@ -116,33 +119,45 @@ architecture alu of e_alu is
     -- Out to Adder
     signal adderStb    : std_ulogic := '0';
     signal adderBusyOut : std_ulogic := '0'; -- Can't take data from adder right now
+    
+    -- Pipeline
+    -- Subcomponent
+    signal CmpStb   : std_ulogic; -- ALU sends this
+    signal CmpBusy  : std_ulogic; -- ALU listens for this
+    signal CmpOStb  : std_ulogic; -- ALU listens for this
+    signal CmpOBusy : std_ulogic; -- ALU sends this 
 begin
-    -- FIXME:  make the adder type configurable
-    adder: entity e_binary_adder(speculative_han_carlson_adder)
-        generic map
-        (
-            XLEN => XLEN
-        )
-        port map
-        (
-            -- Control
-            Clk      => Clk,
-            Rst      => Rst,
-            Speculate => '1',
-            Stb      => adderStb,
-            Busy     => adderBusy,
-            -- Input
-            A        => rs1,
-            B        => rs2,
-            Sub      => opAr,
-            -- Output
-            StbOut   => adderStbOut,
-            BusyOut  => adderBusyOut,
-            S        => addsubOut
-            -- Control
-        );
+
+    sch_adder: if (Adder = "Han-Carlson") generate
+        -- FIXME:  Attach A, B, and Sub to internal signals for multiplier-divider use 
+        adder_component: entity e_binary_adder(speculative_han_carlson_adder)
+            generic map
+            (
+                XLEN => XLEN
+            )
+            port map
+            (
+                -- Control
+                Clk      => Clk,
+                Rst      => Rst,
+                Speculate => '1',
+                Stb      => adderStb,
+                Busy     => adderBusy,
+                -- Input
+                A        => rs1,
+                B        => rs2,
+                Sub      => opAr,
+                -- Output
+                StbOut   => adderStbOut,
+                BusyOut  => adderBusyOut,
+                S        => addsubOut
+                -- Control
+            );
+    end generate;
     -- XLEN will be 32, 64, or 128, and will instantiate a shifter
     -- that many bits wide.
+    -- FIXME:  attach Din, Shift, and opFlags to internal signals
+    -- for multiplier-divider use
     barrel_shifter: entity e_barrel_shifter(barrel_shifter)
     generic map (
         XLEN      => XLEN
@@ -154,6 +169,7 @@ begin
         Dout       => barrelOut
     );
 
+    -- TODO:  Instantiate multiplier and divider based on generic 
     alu_p : process(clk) is
     begin
         if (rising_edge(clk) and clkEn = '1') then
@@ -170,7 +186,10 @@ begin
             rd <= barrelOut;
         elsif ((lopAND OR lopOR OR lopXOR) = '1') then
             rd <= bitwiseOut;
-        else
+        elsif (lopMUL = '1') then
+            -- Need a multi-cycle Dadda multiplier
+        elsif (lopDIV = '1') then
+            -- Paravartya or Quick-Div
             rd <= (others => '0');
         end if;
     end process alu_p;
