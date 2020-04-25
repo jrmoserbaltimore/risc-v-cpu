@@ -3,6 +3,9 @@
 --
 -- Fetch->Decode->Load->PostDecode->...
 --
--- Performs variant and environment decoding (e.g. determining correct
--- XLEN context, sign extension, processor feature settings)
+-- Performs variant and environment decoding:
+--   - Determine current XLEN context
+--   - sign extension
+--   - Modify opFlags etc. based on processor feature settings
+--   - Assign opFlags for word width (BHWD) by current XLEN if none set
 

@@ -211,9 +211,10 @@ architecture riscv_decoder of e_decoder is
     signal mstatusOut : std_ulogic_vector(mstatus'LENGTH downto 0);
     signal ringOut : std_ulogic_vector(ring'LENGTH downto 0);
 
+    alias rd : std_ulogic_vector(6 downto 0) is insnWk(11 downto 7);
+
 begin
     decoder: process(clk) is
-        variable Iflg : std_ulogic := '0';
 
         ---------------------------------------
         -- RV32I/RV64I Arithmetic operations --
@@ -233,61 +234,76 @@ begin
         impure function decodeRVIArithmetic (decode: boolean) return boolean is
             variable decoded : boolean := false;
         begin
-            if (    ((opcode AND "0010011") = "0010011") -- These bits on
-                AND ((opcode AND "1000100") = "0000000")) -- These bits off
-                     -- Essential mask 0_1_011
-                AND ((funct7 AND "1011111") = "0000000") then
+            if ( NOT
+                 (
+                  ((opcode AND "0010011") = "0010011") -- These bits on
+                  AND ((opcode AND "1000100") = "0000000") -- These bits off
+                       -- Essential mask 0_1_011
+                  AND ((funct7 AND "1011111") = "0000000")
+                 )
+               ) then
+                -- Not RVI Arithmetic
+                return false;
+            end if;
 
-                decoded := true;
-                -- extract W and I bits
-                opW  <= opcode(3);
-                opAr <= funct7(5);
-                -- Arithmetic bit doesn't go to output for SUB
-                Iflg := NOT opcode(5); -- immediate
-                -- Check for illegal instruction
-                if (
-                       ( (opAr = '1') AND (funct3 /= "000") AND (funct3 /= "101") ) -- not SUB or SRA
-                    OR ( (Iflg = '1') AND (funct3 = "000") ) -- SUBI isn't an opcode
-                    OR ( (opW = '1') AND (
-                                             (funct3 = "010") -- SLT
-                                          OR (funct3 = "011") -- SLTU
-                                          OR (funct3 = "100") -- XOR
-                                          OR (funct3 = "110") -- OR
-                                          OR (funct3 = "111") -- AND
-                                          )
-                        )
-                   ) then
-                    -- illegal instruction
-                    lopIll <= '1';
-                else
-                    -- Determine instruction type for loadResource.
-                    -- Load stage MUST check (lrI AND  
-                    lrR <= NOT Iflg;
-                    lrI <= Iflg;
-                    -- Decode funct3
-                    case funct3 is
-                    when "000" =>
-                        -- lrA determins add or subtract as per table above
-                        lopAdd <= '1';
-                    when "001"|"101" =>
-                        lopShift <= '1';
-                        opAr  <= funct7(5);
-                        --Right shift
-                        opRSh <= '1' when funct3 = "101" else
-                                 '0';
-                    when "010"|"011" =>
-                        lopCmp <= '1';
-                        opUnS  <= '1' when funct3 = "011" else
-                                  '0';
-                    when "100" =>
-                        lopXOR <= '1';
-                    when "110" =>
-                        lopOR <= '1';
-                    when "111" =>
-                        lopAND <= '1';
-                    end case;
-                end if; -- Function check
-            end if; -- opcode and function check
+            decoded := true;
+            -- extract W and I bits
+            opW  <= opcode(3);
+            opAr <= funct7(5);
+            -- Arithmetic bit doesn't go to output for SUB
+            lrR <= opcode(5); -- R-type
+            lrI <= NOT opcode(5); -- I-type 
+            -- Check for illegal instruction
+            if (
+                   ( (opAr = '1') AND (funct3 /= "000") AND (funct3 /= "101") ) -- not SUB or SRA
+                OR ( (lrI = '1') AND (funct3 = "000") ) -- SUBI isn't an opcode
+                OR ( (opW = '1') AND (
+                                         (funct3 = "010") -- SLT
+                                      OR (funct3 = "011") -- SLTU
+                                      OR (funct3 = "100") -- XOR
+                                      OR (funct3 = "110") -- OR
+                                      OR (funct3 = "111") -- AND
+                                      )
+                    )
+               ) then
+                -- illegal instruction
+                lopIll <= '1';
+            else
+                -- Decode funct3
+                case funct3 is
+                when "000" =>
+                    -- lrA determins add or subtract as per table above
+                    lopAdd <= '1';
+                when "001"|"101" =>
+                    lopShift <= '1';
+                    opAr  <= funct7(5);
+                    --Right shift
+                    opRSh <= '1' when funct3 = "101" else
+                             '0';
+                when "010"|"011" =>
+                    lopCmp <= '1';
+                    if (funct3 = "011") then
+                        opUnS <= '1';
+                    else
+                        opUnS  <= '0';
+                        if( --(lopCmp = '1')
+                           --AND (opUnS = '0')
+                           (opW = '0')
+                           AND (rd = "00000") -- x0:  hint
+                           -- AND (rs1 = "00000") AND (rs2 = "00000") -- Unnecessary: we have only one hint
+                        ) then
+                            -- Reset:  decode to both R and I type, impossible
+                            LoadResource <= "000011";
+                        end if;
+                    end if;
+                when "100" =>
+                    lopXOR <= '1';
+                when "110" =>
+                    lopOR <= '1';
+                when "111" =>
+                    lopAND <= '1';
+                end case;
+            end if; -- Function check
             return decoded;
         end function;
 
@@ -417,18 +433,28 @@ begin
             return decoded;
         end function;
 
-begin
-    if (rising_edge(clk)) then
-        -- FIXME:  Wipe these under some condition...or any condition?
-        logicOp      <= (others => '0');
+    begin
+        if (rising_edge(clk)) then
+            -- FIXME:  Wipe these under some condition...or any condition?
+            logicOp      <= (others => '0');
             opFlags      <= (others => '0');
             loadResource <= (others => '0');
             -- FIXME:  put the buffer on the output?
-            if (rst = '1') then
-                -- Reset, completely.  Don't care about anything.
+            if( (lopCmp = '1')
+               AND (opUnS = '0')
+               AND (opW = '0')
+               AND (rd = "00000") -- x0:  hint
+               -- AND (rs1 = "00000") AND (rs2 = "00000") -- Unnecessary: we have only one hint
+              ) then
+              -- Reset, completely.  Don't care about anything.
+              -- Processing a SLT x0 hint is our RESET condition, and the
+              -- RESET signal generates 
                 busy       <= '0';
                 stbOut     <= '0';
                 R          <= '0';
+            end if;
+            if (rst = '1') then
+
             -- FIXME:  must move the decoding stage to interact properly
             -- with the handshaking stage below
             elsif (decodeRVIArithmetic(true)) then

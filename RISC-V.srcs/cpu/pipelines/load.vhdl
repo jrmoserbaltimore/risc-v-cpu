@@ -27,12 +27,15 @@ entity e_pipeline_load is
         -- Output handshake
         StbOut   : out std_ulogic;
         BusyOut  : in std_ulogic;
-        -- Instruction to decode
+        -- Instruction
         insn : in  std_ulogic_vector(31 downto 0);
         -- Context
         misa : in  std_ulogic_vector(31 downto 0);
         mstatus : in  std_ulogic_vector(XLEN-1 downto 0);
         ring : in  std_ulogic_vector(1 downto 0);
+        --
+        -- Load resource:
+        loadResource : in  std_ulogic_vector(5 downto 0);
         ------------
         -- Output --
         ------------

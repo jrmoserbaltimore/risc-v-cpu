@@ -3,15 +3,13 @@ Roadmap for CPU
 
 # Minimal CPU
 
-The steps to create a working RISC-V RV32I implementation are simple:
+The steps to create a working RISC-V RV32/64I implementation are simple:
 
 1. Infrastructure
  * Register file
- * Instruction fetch
- * Instruction decoder
-2.  ALU components
- * Adder-Subtractor
- * Barrel shifter
+2.  ALU
+ * Adder-Subtractor - 100%
+ * Barrel shifter - 100%
  * Bit operations
 3.  Basic instruction implementations
  * Canonical NOP instruction
@@ -27,16 +25,15 @@ The steps to create a working RISC-V RV32I implementation are simple:
    * Branch (`BEQ`, `BNE`, `BLT`, `BGE`, `BLTU`, `BGEU`)
    * Control flow (`AUIPC`, `JAL`, `JALR`)
    * Comparison instructions (`SLTI`, `SLTIU`, `SLT`, `SLTU`)
-6.  ALU
-7.  Pipeline
- * Fetch
- * Decode
+6.  Pipeline
+ * Instruction fetch
+ * Instruction decoder - 80%
  * Locking
  * Load
  * Execute
  * Retire
 
-The above implements all the RV32I instructions except `FENCE`.  This
+The above implements all the RV32/64I instructions except `FENCE`.  This
 does not, however, implement machine mode:  the CPU is not a proper
 RISC-V CPU.  With the above implemented, test RISC-V code can run on
 the core.
