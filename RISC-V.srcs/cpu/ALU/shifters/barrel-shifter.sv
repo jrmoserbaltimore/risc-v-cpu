@@ -16,7 +16,8 @@
 // 
 // License:  MIT, 7-year CC0
 // 
-// Revision: 0.02
+// Revision: 1.0
+// Revision 1.0 - Behavioral modeling
 // Revision 0.02 - Used a nested module
 // Revision 0.02 - File Created
 // Additional Comments:
@@ -69,25 +70,12 @@ module BarrelShifter
     BarrelShifter.Shifter Shifter
 );
 
-    module Mux
-    (
-        output uwire s,
-        input uwire a,
-        input uwire b,
-        input uwire sel
-    );
-        uwire f1, f2, nsel;
-        and (f1, a, nsel),
-            (f2, b, sel);
-        or  (s, f1, f2);
-        not (nsel, sel);
-    endmodule
-    
     logic SignEx;
 
     let opArithmetic = Shifter.opFlags[0];
     let opRightShift = Shifter.opFlags[0];
 
+    // Sign-extend using the MSB of DN if both shifting right and arithmetic
     and (SignEx, Shifter.Din[XLEN-1], opArithmetic, opRightShift);
 
     genvar row;
@@ -100,7 +88,9 @@ module BarrelShifter
         for (col = 0; col <= XLEN-1; col++) begin
             // Reverse if right shift
             // A bunch of 2-to-1 mux to reverse on arithmetic
-            Mux m(tree[0][col], Shifter.Din[col], Shifter.Din[(XLEN-1)-col], opRightShift);
+            assign tree[0][col] = (opRightShift == 0)
+              ? Shifter.Din[col]
+              : Shifter.Din[(XLEN-1)-col];
         end
 
         for (row = 0; row <= $clog2(XLEN); row++) begin
@@ -109,22 +99,21 @@ module BarrelShifter
                 if (col <= 2**row) begin
                     // Set the bits being shifted in if shifting this row.
                     // if right-shift arithmetic, extend sign
-                    Mux m(tree[row+1][col], tree[row][col], SignEx, Shifter.Shift[row]);
+                    assign tree[row+1][col] = (Shifter.Shift[row] = 0) ? tree[row][col] : SignEx;
                 end
                 else begin
-                    Mux m(tree[row+1][col], tree[row][col], tree[row][col-2**row], Shifter.Shift[row]);
+                    assign tree[row+1][col] = (Shifter.Shift[row] = 0)
+                      ? tree[row][col]
+                      : tree[row][col-2**row];
                 end
             end
         end
 
         for (col = 0; col <= XLEN-1; col++) begin
             // Reverse back for right shift
-            Mux m(
-                  Shifter.Dout[col],
-                  tree[$clog2(XLEN)+1][col],
-                  tree[$clog2(XLEN)+1][(XLEN-1)-col],
-                  opRightShift
-                 );
+            assign Shifter.Dout[col] = (opRightShift == 0)
+              ? tree[$clog2(XLEN)+1][col]
+              : tree[$clog2(XLEN)+1][(XLEN-1)-col];
         end
      endgenerate
 endmodule
