@@ -16,9 +16,10 @@
 // 
 // License:  MIT, 7-year CC0
 // 
-// Revision: 0.01
-// Revision 0.01 - File Created
-// Additional Comments:  Deliderately gate-modeled
+// Revision: 0.02
+// Revision 0.02 - Used a nested module
+// Revision 0.02 - File Created
+// Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
 `default_nettype uwire
@@ -68,6 +69,20 @@ module BarrelShifter
     BarrelShifter.Shifter Shifter
 );
 
+    module Mux
+    (
+        output uwire s,
+        input uwire a,
+        input uwire b,
+        input uwire sel
+    );
+        uwire f1, f2, nsel;
+        and (f1, a, nsel),
+            (f2, b, sel);
+        or  (s, f1, f2);
+        not (nsel, sel);
+    endmodule
+    
     logic SignEx;
 
     let opArithmetic = Shifter.opFlags[0];
@@ -83,45 +98,33 @@ module BarrelShifter
 
         // input reversed?
         for (col = 0; col <= XLEN-1; col++) begin
-            // Reverse if arithmetic
+            // Reverse if right shift
             // A bunch of 2-to-1 mux to reverse on arithmetic
-            logic f1, f2, nArithmetic;
-            and (f1, Shifter.Din[col], nArithmetic),
-                (f2, Shifter.Din[(XLEN-1)-col], opArithmetic);
-            or  (tree[0][col], f1, f2);
-            not (nArithmetic, opArithmetic);
+            Mux m(tree[0][col], Shifter.Din[col], Shifter.Din[(XLEN-1)-col], opRightShift);
         end
 
         for (row = 0; row <= $clog2(XLEN); row++) begin
             // Row by row shift left
             for (col = 0; col <= XLEN-1; col++) begin
                 if (col <= 2**row) begin
-                    logic f1, f2, nShift;
-                    // We're shifting left; if right-shift arithmetic, extend sign
-                    and (f1, tree[row][col], nShift),
-                        (f2, SignEx, Shifter.Shift);
-                    or  (tree[row+1][col], f1, f2);
-                    not (nShift, Shift(row));
+                    // Set the bits being shifted in if shifting this row.
+                    // if right-shift arithmetic, extend sign
+                    Mux m(tree[row+1][col], tree[row][col], SignEx, Shifter.Shift[row]);
                 end
                 else begin
-                    logic f1, f2, nShift;
-                    // Mux
-                    and (f1, tree[row][col], nShift),
-                        (f2, tree[row][col-2**row], Shifter.Shift);
-                    or  (tree[row+1][col], f1, f2);
-                    not (nShift, Shift(row));
+                    Mux m(tree[row+1][col], tree[row][col], tree[row][col-2**row], Shifter.Shift[row]);
                 end
             end
         end
 
         for (col = 0; col <= XLEN-1; col++) begin
-            // Reverse if arithmetic
-            // A bunch of 2-to-1 mux to reverse on arithmetic
-            logic f1, f2, nArithmetic;
-            and (f1, Shifter.Din[col], nArithmetic),
-                (f2, Shifter.Din[(XLEN-1)-col], opArithmetic);
-            or  (tree[0][col], f1, f2);
-            not (nArithmetic, opArithmetic);
+            // Reverse back for right shift
+            Mux m(
+                  Shifter.Dout[col],
+                  tree[$clog2(XLEN)+1][col],
+                  tree[$clog2(XLEN)+1][(XLEN-1)-col],
+                  opRightShift
+                 );
         end
      endgenerate
 endmodule
