@@ -32,7 +32,7 @@
 // If the next (right) module is busy, the current module must send Busy to the
 // prior (left) module.  This interface handles that coordination. 
 //
-interface BufferedHandshake
+interface IBufferedHandshake
 #(
     parameter type InType, OutType
 );

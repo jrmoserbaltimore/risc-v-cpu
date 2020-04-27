@@ -67,15 +67,7 @@ architecture barrel_shifter of e_barrel_shifter is
     -- bit 1:  Right shift
     alias opAr  : std_ulogic is opFlags(0);
     alias opRSh : std_ulogic is opFlags(1);
-    
-    function ShiftWidth (l: natural) return natural is
-    begin
-        if (l > XLEN-1) then
-            return XLEN-1;
-        end if;
-        return l;
-    end function;
-        
+
 begin
     -- This thing is inherently combinatorial
     barrel: process(all) is
