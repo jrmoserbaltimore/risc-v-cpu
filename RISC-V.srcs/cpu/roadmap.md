@@ -10,7 +10,9 @@ The steps to create a working RISC-V RV32/64I implementation are simple:
 2.  ALU
  * Adder-Subtractor - 100%
  * Barrel shifter - 100%
- * Bit operations
+ * Bit operations - 100%
+ * Multiplication
+ * Division
 3.  Basic instruction implementations
  * Canonical NOP instruction
    * Detect `ADDI x0, x0, 0` and silently abort the insn

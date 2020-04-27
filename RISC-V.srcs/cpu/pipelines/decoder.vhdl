@@ -41,7 +41,7 @@ entity e_decoder is
     (
         -- Control port
         Clk      : in  std_ulogic;
-        Rst      : in  std_ulogic;
+        Rst      : in  std_ulogic; -- Pipeline flush or reset
         Stb      : in  std_ulogic;
         Busy     : out std_ulogic;
         -- Reset signal propagates after CPU reset.
@@ -183,12 +183,7 @@ architecture riscv_decoder of e_decoder is
     
     alias exX : std_ulogic is misa(23);
 
-    -- Working set
-    signal AWk : std_ulogic_vector(XLEN-1 downto 0);
-    signal BWk : std_ulogic_vector(XLEN-1 downto 0);
-    signal SubWk : std_ulogic;
-    signal specWk : std_ulogic;
-        -- working set, either from input or buffered storage
+    -- working set, either from input or buffered storage
     signal insnWk : std_ulogic_vector(insn'RANGE);
     signal misaWk : std_ulogic_vector(misa'RANGE);
     signal mstatusWk : std_ulogic_vector(mstatus'RANGE);
@@ -391,7 +386,8 @@ begin
         impure function decodeRVM (decode: boolean) return boolean is
             variable decoded : boolean := false;
         begin
-            -- Not supported, so don't decode
+            -- Not supported, so don't decode.
+            -- If RVM is not compiled in, the synthesizer will trim this.
             if ((NOT RVM) OR (exM = '0')) then
                 return false;
             end if;

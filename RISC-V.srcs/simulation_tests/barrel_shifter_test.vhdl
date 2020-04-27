@@ -35,10 +35,12 @@ architecture t_barrel_shift of et_barrel_shift is
     Signal Reset : std_ulogic := '1';
 begin
     barrel_shifter: entity e_barrel_shifter(barrel_shifter)
-    generic map (
+    generic map
+    (
         XLEN      => XLEN
     )
-    port map (
+    port map
+    (
 --        Clk        => Clk,
         Din        => "10110101",  -- output should be 10101000
         Shift      => "0011", -- 3
@@ -51,7 +53,8 @@ begin
         (
             XLEN => 8
         )
-        port map (
+        port map
+        (
         -- Control
             Clk      => Clk,
             Rst      => Reset,
@@ -73,7 +76,8 @@ begin
         (
             XLEN => 8
         )
-        port map (
+        port map
+        (
         -- Control
             Clk      => Clk,
             Rst      => Reset,
@@ -91,10 +95,10 @@ begin
         );
     Clk <= not Clk after ClockPeriod;
     
-    process(Clk) is
+    process is
     begin
-        if (rising_edge(Clk)) then
-            Reset <= '0';
-        end if;
+        wait for 10ns;
+        assert Dout = "10101000" report "Barrel shifter bad output" severity failure;
+        
     end process;
 end t_barrel_shift;

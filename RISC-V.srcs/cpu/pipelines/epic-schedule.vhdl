@@ -3,7 +3,6 @@
 --
 -- The EPIC OOE scheduler does a few things:
 --
---  - Identifies hints, notably RESET (SLL x0, x0, x0)
 --  - Determines dependencies
 --  - Schedules instructions
 --
@@ -11,6 +10,18 @@
 -- These hints are neither standardized nor stabilized.
 --
 -- DO NOT TARGET THESE HINTS IN PRODUCTION CODE.
+--
+-- EPIC Hint layout:  SLTI x0, x0, [hint]
+--
+--   imm[11:10] - EPIC mode
+--   imm[9:8]   - EPIC block size
+--   imm[7:0]   - EPIC interpretation distance
+--
+-- EPIC Hint layout:  C.SLLI x0, [hint]
+--
+--   imm[4:3]   - EPIC mode
+--   imm[2:1]   - EPIC block size
+--   imm[0]     - EPIC interpretation distance (0 = 8, 1 = 16)
 --
 -- epicMode bits:
 --
@@ -43,7 +54,6 @@
 --     Block 3   |  Block 4     Blocks executed AFTER 1 and 2
 --    Sequential | Sequential
 --   --------------------------
---
 --
 -- Mode 01 (independent) visual:
 --
@@ -87,6 +97,61 @@
 -- out of order clobbers rdy; register renaming is necessary to prevent
 -- this clobbering, but is already necessary for parallel execution of
 -- sequential blocks.
+--
+-- Block size indicates the size of blocks:  shift 8 left this far to
+-- get independent block size in bytes, i.e. two left to get independent
+-- block size in 32-bit instruction words.  Blocks are aligned to this,
+-- and the EPIC hint occurs as the first instruction in the first block.
+--
+-- 00 = Blocks of 2 32-bit instructions (8 bytes)
+-- 01 = Blocks of 4 32-bit instructions (16 bytes)
+-- 10 = Blocks of 8 32-bit instructions (32 bytes)
+-- 11 = Blocks of 16 32-bit instructions (64 bytes)
+--
+-- RVC instructions can pack more into these blocks; VLIW instructions can
+-- pack in fewer.  An instruction extending past the end of a block is a
+-- misaligned instruction error; RVC NOP must pad the end of such blocks.
+--
+-- Branch instructions are never executed out of order and represent an
+-- implicit FENCE both in memory operations and in execution.  Tight
+-- loops may reorder instructions within the loop, but will not reorder
+-- them beyond the branch instruction.
+--
+-- Branching into an EPIC stream carries interesting implications:  the
+-- processor may cache EPIC information, or it may assume all instructions
+-- are sequential after any branch, or after any branch leaving the
+-- current EPIC context.
+--
+-- Compilers should explicitly assume implementations will retain EPIC
+-- information for intra-context branches, and will not cache EPIC
+-- informaiton outside the current context.  When branching outside the
+-- current context, an instruction immediately preceding the branch
+-- should provide an EPIC hint indicating where to locate the
+-- corresponding EPIC hint:
+--
+--   SLT x0, [hint], [hint]
+--
+-- The [24:15] space encodes a value between 0 and 1024 indicating
+-- how many 8-byte blocks to retrace for the EPIC hint.  If jumping
+-- to an instruction in the middle of the first block, 0 indicates
+-- a hint at the top of the current 8-byte-aligned block; 1
+-- indicates the top of the current 16-byte-aligned block
+-- (interpreted as the top of the PREVIOUS 8-byte-aligned block);
+-- and so forth.
+--
+-- These hints allow extreme mass parallelization by specialized
+-- implementations while foregoing complex superscalar resource
+-- resolution.  Any block of independent instructions can use
+-- transactional register and memory operations to implement
+-- EPIC parallelism:  because an instruction doesn't use data
+-- from a prior or later instruction BUT a later instruction
+-- may write to a source register or store to RAM, we can
+-- assume any writes are not and must not be visible to any
+-- independent instruction, and so can simply cache the
+-- contents of any register or memory address to be written
+-- (writing them out as normal) and use those cached values
+-- for any reads by any instructions.  Instructions must
+-- NOT write to the same register or memory address.
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
@@ -131,10 +196,8 @@ architecture pipeline_scheduler of e_pipeline_load is
     
     -- Up to 256 blocks of independent instructions
     signal epicDistance   : unsigned(7 downto 0);
-    -- Block size:  shift four left this far to get independent block size,
-    -- e.g. 00 = every group of 4 instructions are independent of one
-    -- another, 01 = groups of 8, 10 = 16, 11 = 32
-    signal epicMode       : std_ulogic_vector(3 downto 0);
+    signal epicMode       : std_ulogic_vector(1 downto 0);
+    signal epicLength     : std_ulogic_vector(1 downto 0);
 
 begin
     
@@ -150,8 +213,9 @@ begin
            AND (lrI = '1')
            AND (rd = "00000") -- x0:  hint
         ) then
+            epicMode     <= insn(31 downto 30);
+            epicLength   <= insn(29 downto 28);
             epicDistance <= unsigned(insn(27 downto 20));
-            epicMode     <= insn(31 downto 28);
         end if;
         -- TODO:  
     end process decode_hints;

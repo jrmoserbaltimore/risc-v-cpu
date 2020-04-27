@@ -63,18 +63,19 @@ architecture barrel_shifter of e_barrel_shifter is
     signal SignEx : std_ulogic;
     
     -- Operation flags
-    -- bit 0:  *B
-    -- bit 1:  *H
-    -- bit 2:  *W
-    -- bit 3:  *D
-    -- bit 4:  Arithmetic (and Adder-Subtractor subtract)
-    -- bit 5:  Right shift
-    alias opB   : std_ulogic is opFlags(0);
-    alias opH   : std_ulogic is opFlags(1);
-    alias opW   : std_ulogic is opFlags(2);
-    alias opD   : std_ulogic is opFlags(3);
-    alias opAr  : std_ulogic is opFlags(4);
-    alias opRSh : std_ulogic is opFlags(5);
+    -- bit 0:  Arithmetic (and Adder-Subtractor subtract)
+    -- bit 1:  Right shift
+    alias opAr  : std_ulogic is opFlags(0);
+    alias opRSh : std_ulogic is opFlags(1);
+    
+    function ShiftWidth (l: natural) return natural is
+    begin
+        if (l > XLEN-1) then
+            return XLEN-1;
+        end if;
+        return l;
+    end function;
+        
 begin
     -- This thing is inherently combinatorial
     barrel: process(all) is
@@ -86,12 +87,7 @@ begin
         --          AND
         --           |
         --          All shifted-out MUXes
-        SignEx          <= (
-                               (Din(7) AND opB)
-                            OR (Din(15) AND opH)
-                            OR (Din(31) AND opW)
-                            OR (Din(64) AND opD)
-                           ) AND opAr AND opRSh;
+        SignEx          <= Din(Din'HIGH) AND opAr AND opRSh;
         
         -- Put Din into the top of the tree to avoid breaking out special
         -- handling for the first row.  The "top" is basically tree(-1).
