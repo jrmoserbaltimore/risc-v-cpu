@@ -29,13 +29,9 @@ interface IBarrelShifter
 #(
     parameter XLEN = 32
 );
-
-    uwire Clk;
-    uwire Rst;
-    
-    bit Din[XLEN-1:0];
-    bit Shift[$clog2(XLEN):0];
-    bit Dout[XLEN-1:0];    
+    logic Din[XLEN-1:0];
+    logic Shift[$clog2(XLEN):0];
+    logic Dout[XLEN-1:0];    
     // Operation flags
     // bit 0:  Arithmetic (and Adder-Subtractor subtract)
     // bit 1:  Right shift
@@ -66,8 +62,7 @@ module BarrelShifter
     parameter XLEN = 32
 )
 (
-    input logic Clk,
-    BarrelShifter.Shifter Shifter
+    IBarrelShifter.Shifter Shifter
 );
 
     logic SignEx;
@@ -78,9 +73,9 @@ module BarrelShifter
     // Sign-extend using the MSB of DN if both shifting right and arithmetic
     and (SignEx, Shifter.Din[XLEN-1], opArithmetic, opRightShift);
 
-    genvar row;
-    genvar col;
     generate
+        genvar row;
+        genvar col;
         // Barrel shifter tree
         logic [$clog2(XLEN)+1:0][XLEN-1:0] tree;
 
