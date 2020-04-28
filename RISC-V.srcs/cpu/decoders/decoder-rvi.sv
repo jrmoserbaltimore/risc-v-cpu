@@ -92,25 +92,13 @@ module RVIDecoderTable
                )
             begin
                 // Definitely a Branch/JAL/JALR opcode
-                if (opcode[3:2] == 2'b11)
-                begin
-                    // J-type JAL
-                    DecoderPort.Sel = 1'b1;
-                    `lrJ = 1'b1;
-                end
-                else if (opcode[3:2] == 2'b00 && funct3[2:1] != 2'b01)
-                begin
-                    // B-type Branch opcode; funct3 cannot be 010 or 011
-                    DecoderPort.Sel = 1'b1;
-                    `lrB = 1'b1;
-                end
-                else if (opcode[3:2] == 2'b01 && funct3 == 3'b000)
-                begin
-                    // I-type JALR
-                    DecoderPort.Sel = 1'b1;
-                    // I-type JALR
-                    `lrI = 1'b1;
-                end
+                // J-type JAL
+                `lrJ = (opcode[3:2] == 2'b11) ? 1'b1 : 1'b0;
+                // B-type Branch opcode; funct3 cannot be 010 or 011
+                `lrB = (opcode[3:2] == 2'b00 && funct3[2:1] != 2'b01) ? 1'b1 : 1'b0;
+                // I-type JALR
+                `lrI = (opcode[3:2] == 2'b01 && funct3 == 3'b000) ? 1'b1 : 1'b0;
+                DecoderPort.Sel = `lrI | `lrB | `lrJ;
                 // Ignore all invalid or non-branch instructions
             end
         end
@@ -264,13 +252,13 @@ module RVIDecoderTable
                             `lopCmp = 1'b1;
                             `opUnS = (funct3 == 3'b011) ? 1'b1 : 1'b0;
                         end
-    
-                    3'b100:
-                        `lopXOR = 1'b1;
-                    3'b110:
-                        `lopOR = 1'b1;
-                    3'b111:
-                        `lopAND = 1'b1;
+
+                        3'b100:
+                            `lopXOR = 1'b1;
+                        3'b110:
+                            `lopOR = 1'b1;
+                        3'b111:
+                            `lopAND = 1'b1;
                     endcase
                 end 
             end
