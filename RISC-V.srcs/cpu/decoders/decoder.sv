@@ -32,6 +32,9 @@ interface IDecoder
     logic mstatus[XLEN-1:0];
     bit ring[1:0];
     
+    // XLEN can only increment/decrement by 2 (4 without RVC)
+    logic pc[XLEN-2:0];
+    
     // ------------
     // -- Output --
     // ------------
@@ -94,6 +97,7 @@ interface IDecoder
     modport DecoderTable
     (
         input insn,
+        input misa,
         output logicOp,
         output opFlags,
         output loadResource,

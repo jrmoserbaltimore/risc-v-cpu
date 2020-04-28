@@ -10,7 +10,7 @@
 // Project Name: RISC-V
 // Target Devices: Xilinx 7-series
 // Tool Versions: Vivado 2019.2.1
-// Description: A RISC-V Decoder
+// Description: A RISC-V RVI Decoder
 // 
 // Dependencies: 
 // 
@@ -267,17 +267,52 @@ module RVIDecoderTable
         end
     endmodule
 
+    // -----------------------------------
+    // -- RV32I/RV64I System Operations --
+    // -----------------------------------
+    // funct3 is always 000
+    // opcode   [20]    insn
+    // 0001111          FENCE
+    // 1110011    0     ECALL
+    // 1110011    1     EBREAK
+    module System
+    (
+        IDecoder.DecoderTable DecoderPort
+    );
+        always_comb
+        begin
+            DecoderPort.logicOp = '0;
+            DecoderPort.opFlags = '0;
+            DecoderPort.loadResource = '0;
+            DecoderPort.Sel = 1'b0;
+            // FIXME:  implement these
+            if (
+                   opcode == 7'b1110011
+                && DecoderPort.insn[31:26] == '0
+                && DecoderPort.insn[24:7] == '0
+               )
+            begin
+                // ECALL/EBREAK
+                // `lopSysCallBreak = 1'b1;
+            end
+            // `lopFence = (opcode == 7'b0001111) ? 1'b1 : 1'b0;
+            // DecoderPort.Sel = `lopFence & `lopSysCallBreak;
+        end
+    endmodule
+
     DecoderPort BranchPort();
     DecoderPort LoadStorePort();
     DecoderPort ArithmeticPort();
+    DecoderPort SystemPort();
 
     Branch BranchDec(.DecoderPort(BranchPort));
     LoadStore LoadDec(.DecoderPort(LoadStorePort));
     Arithmetic ArDec(.DecoderPort(ArithmeticPort));
+    System SystemDec(.DecoderPort(SystemPort));
 
     always_comb
     begin
-        // 4:1 mux
+        // Huge 5:1 mux
         if (BranchDec.Sel == 1'b1)
         begin
             DecoderPort.logicOp = BranchPort.logicOp;
@@ -295,6 +330,12 @@ module RVIDecoderTable
             DecoderPort.logicOp = ArithmeticPort.logicOp;
             DecoderPort.opFlags = ArithmeticPort.opFlags;
             DecoderPort.loadResource = ArithmeticPort.loadResource;
+        end
+        else if (SystemPort.Sel == 1'b1)
+        begin
+            DecoderPort.logicOp = SystemPort.logicOp;
+            DecoderPort.opFlags = SystemPort.opFlags;
+            DecoderPort.loadResource = SystemPort.loadResource;
         end
         else
         begin
