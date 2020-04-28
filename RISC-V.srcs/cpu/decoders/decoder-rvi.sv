@@ -16,7 +16,8 @@
 // 
 // License:  MIT, 7-year CC0
 // 
-// Revision: 0.01
+// Revision: 0.1
+// Revision 0.1 - Added all except FENCE, ECALL, EBREAK
 // Revision 0.01 - File Created
 // Additional Comments:
 // 
@@ -351,3 +352,33 @@ module RVIDecoderTable
         DecoderPort.Sel = BranchPort.Sel + LoadStorePort.Sel + ArithmeticPort.Sel;
     end
 endmodule
+
+`undef lopAdd
+`undef lopShift
+`undef lopCmp
+`undef lopAND
+`undef lopOR
+`undef lopXOR
+`undef lopMUL
+`undef lopDIV
+`undef lopIll
+`undef lopLoad
+`undef lopStore
+
+`undef opB
+`undef opH
+`undef opW
+`undef opD
+`undef opUnS
+`undef opAr
+`undef opRSh
+`undef opHSU
+`undef opRem
+
+`undef lrR
+`undef lrI
+`undef lrS
+`undef lrB
+`undef lrU
+`undef lrJ
+`undef lrUPC

@@ -141,3 +141,33 @@ module RVMDecoderTable
         end
     end
 endmodule
+
+`undef lopAdd
+`undef lopShift
+`undef lopCmp
+`undef lopAND
+`undef lopOR
+`undef lopXOR
+`undef lopMUL
+`undef lopDIV
+`undef lopIll
+`undef lopLoad
+`undef lopStore
+
+`undef opB
+`undef opH
+`undef opW
+`undef opD
+`undef opUnS
+`undef opAr
+`undef opRSh
+`undef opHSU
+`undef opRem
+
+`undef lrR
+`undef lrI
+`undef lrS
+`undef lrB
+`undef lrU
+`undef lrJ
+`undef lrUPC

@@ -11,7 +11,7 @@ instructions to the ALU.
 
 # Soft ALU
 
-`alu.vhdl` provides a soft ALU incorporating a speculative Han-Carlson
+`alus-fabric.sv` provides a soft ALU incorporating a speculative Han-Carlson
 adder-subtractor, a reversible barrel shifter, bitwise operations, a
 comparator, a Dadda multiplier, and a Paravartya divider.
 
@@ -21,7 +21,7 @@ than FPGA.
 
 # Xilinx DSP48E1 ALU
 
-`alu-dsp48e1.vhdl` provides a Xilinx DSP48E1 ALU, based on Cheah Hui
+`alu-dsp48.sv` provides a Xilinx DSP48E1 ALU, based on Cheah Hui
 Yan's [iDEA soft processor](https://www.xilinx.com/support/documentation/white_papers/wp406-DSP-Design-Productivity.pdf).
 The DSP48E1 provides a high-speed adder-subtractor, a multiplier,
 and bitwise operations.  The adder-subtractor can provide a

@@ -5,12 +5,12 @@
 // Engineer: John Moser
 // 
 // Create Date: 04/28/2020
-// Design Name: Carry-Select Adder
-// Module Name:
+// Design Name: Speculative Han-Carlson Adder
+// Module Name: HanCarlsonAdder
 // Project Name: RISC-V
 // Target Devices: Xilinx 7-series
 // Tool Versions: Vivado 2019.2.1
-// Description: A Carry-Select adder
+// Description: A speculative Han-Carlson adder
 // 
 // Dependencies: 
 // 
