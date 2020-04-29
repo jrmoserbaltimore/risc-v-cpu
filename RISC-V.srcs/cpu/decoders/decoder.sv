@@ -6,7 +6,7 @@
 // 
 // Create Date: 04/27/2020
 // Design Name: RISC-V Decoder
-// Module Name: Decoder
+// Module Name: RVDecoder
 // Project Name: RISC-V
 // Target Devices: Xilinx 7-series
 // Tool Versions: Vivado 2019.2.1
@@ -16,91 +16,128 @@
 // 
 // License:  MIT, 7-year CC0
 // 
-// Revision: 0.01
+// Revision: 0.1
+// Revision 0.1 - Changed to IPipelineData interface
 // Revision 0.01 - File Created
 // Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
 `default_nettype uwire
 
-interface IDecoder
-#(
-    parameter XLEN = 32
+module RVDecoder
+(
+    logic Clk,
+    IPipelineData.Decoder DecoderPort,
+    logic Sel
 );
-    logic insn[31:0];
-    logic misa[31:0];
-    logic mstatus[XLEN-1:0];
-    bit ring[1:0];
-    
-    // XLEN can only increment/decrement by 2 (4 without RVC)
-    logic pc[XLEN-2:0];
-    
-    // ------------
-    // -- Output --
-    // ------------
-    // What operation
-    // ALU ops
-    // 0: add, sub: ADD, ADDI, SUB; 64 ADDW, ADDIW, SUBW
-    // 1: shift: SLL, SLLI, SRL, SRLI, SRA; 64 SLLIW, SRRIW, SRAIW
-    // 2: Comparator (SLT, SLTU, SLTI, SLTIU)
-    // 3: AND: AND, ANDI
-    // 4: OR: OR, ORI
-    // 5: XOR: XOR, XORI
-    //
-    // Extension: M
-    // 6: Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
-    // 7: Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
-    //  
-    // Non-ALU ops
-    // 8: illegal instruction
-    //
-    // Load/Store
-    // 9: Load
-    // 10: Store
-    uwire logicOp[10:0];
-    
-    // Operation flags
-    // bit 0:  *B
-    // bit 1:  *H
-    // bit 2:  *W
-    // bit 3:  *D
-    // bit 4:  Unsigned
-    // bit 5:  Arithmetic (and Adder-Subtractor subtract)
-    // bit 6:  Right-shift
-    // bit 7:  MULHSU
-    // bit 8:  DIV Remainder
-    uwire opFlags[8:0];
-    
-    // Load resource:   Type        what to load
-    // bit 0:  R-type   Register    (rs1, rs2)
-    // bit 1:  I-type   Immediate   (rs1, insn[31:20] sign-extend)
-    // bit 2:  S-Type   Store       (rs1, insn[31:25] & insn[11:7] sign-extended)
-    // bit 3:  B-type   Branch      (rs1, rs2, insn[31] & insn[7] & insn[30:25] & insn[11:8] sign-extend)
-    // bit 4:  U-type   Upper-Imm   (insn[31:12])
-    // bit 5:  J-type   Jump        (insn[31] & insn[19:12] & insn[20] & insn[30:25] & insn[24:21] sign-extend)
-    // bit 6:  U-type               AUIPC, LUI
-    uwire loadResource[5:0];
-    // When we've selected something
-    uwire Sel;
 
-    modport DecodeStage
-    (
-        input insn,
-        input misa,
-        input mstatus,
-        input ring,
-        output logicOp,
-        output opFlags,
-        output loadResource
-    );
+    DecoderPort RVIPort();
+    DecoderPort RVMPort();
 
-    modport DecoderTable
-    (
-        input insn,
-        input misa,
-        output logicOp,
-        output opFlags,
-        output loadResource,
-        output Sel
-    );
-endinterface
+    RVIDecoderTable RVIDec(.DecoderPort(RVIPort));
+    RVMDecoderTable RVMDec(.DecoderPort(RVMPort));
+
+    always_ff@(posedge Clk)
+    begin
+        if (RVIDec.Sel == 1'b1)
+        begin
+            DecoderPort.lopAdd = RVIPort.lopAdd;
+            DecoderPort.lopShift = RVIPort.lopShift;
+            DecoderPort.lopCmp = RVIPort.lopCmp;
+            DecoderPort.lopAND = RVIPort.lopAND;
+            DecoderPort.lopOR = RVIPort.lopOR;
+            DecoderPort.lopXOR = RVIPort.lopXOR;
+            DecoderPort.lopMUL = RVIPort.lopMUL;
+            DecoderPort.lopDIV = RVIPort.lopDIV;
+            DecoderPort.lopLoad = RVIPort.lopLoad;
+            DecoderPort.lopStore = RVIPort.lopStore;
+            DecoderPort.lopIllegal = RVIPort.lopIllegal;
+            
+            DecoderPort.opB = RVIPort.opB;
+            DecoderPort.opH = RVIPort.opH;
+            DecoderPort.opW = RVIPort.opW;
+            DecoderPort.opD = RVIPort.opD;
+            DecoderPort.opUnsigned = RVIPort.opUnsigned;
+            DecoderPort.opArithmetic = RVIPort.opArithmetic;
+            DecoderPort.opRightShift = RVIPort.opRightShift;
+            DecoderPort.opHSU = RVIPort.opHSU;
+            DecoderPort.opRemainder = RVIPort.opRemainder;
+    
+            DecoderPort.lrR = RVIPort.lrR;
+            DecoderPort.lrI = RVIPort.lrI;
+            DecoderPort.lrS = RVIPort.lrS;
+            DecoderPort.lrB = RVIPort.lrB;
+            DecoderPort.lrU = RVIPort.lrU;
+            DecoderPort.lrJ = RVIPort.lrJ;
+        end
+        else if (RVMPort.Sel == 1'b1)
+        begin
+            DecoderPort.lopAdd = RVMPort.lopAdd;
+            DecoderPort.lopShift = RVMPort.lopShift;
+            DecoderPort.lopCmp = RVMPort.lopCmp;
+            DecoderPort.lopAND = RVMPort.lopAND;
+            DecoderPort.lopOR = RVMPort.lopOR;
+            DecoderPort.lopXOR = RVMPort.lopXOR;
+            DecoderPort.lopMUL = RVMPort.lopMUL;
+            DecoderPort.lopDIV = RVMPort.lopDIV;
+            DecoderPort.lopLoad = RVMPort.lopLoad;
+            DecoderPort.lopStore = RVMPort.lopStore;
+            DecoderPort.lopIllegal = RVMPort.lopIllegal;
+            
+            DecoderPort.opB = RVMPort.opB;
+            DecoderPort.opH = RVMPort.opH;
+            DecoderPort.opW = RVMPort.opW;
+            DecoderPort.opD = RVMPort.opD;
+            DecoderPort.opUnsigned = RVMPort.opUnsigned;
+            DecoderPort.opArithmetic = RVMPort.opArithmetic;
+            DecoderPort.opRightShift = RVMPort.opRightShift;
+            DecoderPort.opHSU = RVMPort.opHSU;
+            DecoderPort.opRemainder = RVMPort.opRemainder;
+    
+            DecoderPort.lrR = RVMPort.lrR;
+            DecoderPort.lrI = RVMPort.lrI;
+            DecoderPort.lrS = RVMPort.lrS;
+            DecoderPort.lrB = RVMPort.lrB;
+            DecoderPort.lrU = BranchPort.lrU;
+            DecoderPort.lrJ = BranchPort.lrJ;
+        end
+        else
+        begin
+            // Clear state
+            DecoderPort.lopAdd = 1'b0;
+            DecoderPort.lopShift = 1'b0;
+            DecoderPort.lopCmp = 1'b0;
+            DecoderPort.lopAND = 1'b0;
+            DecoderPort.lopOR = 1'b0;
+            DecoderPort.lopXOR = 1'b0;
+            DecoderPort.lopMUL = 1'b0;
+            DecoderPort.lopDIV = 1'b0;
+            DecoderPort.lopLoad = 1'b0;
+            DecoderPort.lopStore = 1'b0;
+            DecoderPort.lopIllegal = 1'b0;
+            
+            DecoderPort.opB = 1'b0;
+            DecoderPort.opH = 1'b0;
+            DecoderPort.opW = 1'b0;
+            DecoderPort.opD = 1'b0;
+            DecoderPort.opUnsigned = 1'b0;
+            DecoderPort.opArithmetic = 1'b0;
+            DecoderPort.opRightShift = 1'b0;
+            DecoderPort.opHSU = 1'b0;
+            DecoderPort.opRemainder = 1'b0;
+    
+            DecoderPort.lrR = 1'b0;
+            DecoderPort.lrI = 1'b0;
+            DecoderPort.lrS = 1'b0;
+            DecoderPort.lrB = 1'b0;
+            DecoderPort.lrU = 1'b0;
+            DecoderPort.lrJ = 1'b0;
+            // Illegal…instruction?  No you're not going to jail, do not unplug...!
+            // We're not raising Sel anyway
+            // DecoderPort.lopIll = 1'b1;
+        end
+        
+        // Only raise Sel if we decoded an instruction 
+        DecoderPort.Sel = RVIDec.Sel | RVMDec.Sel;
+    end;
+endmodule

@@ -16,7 +16,8 @@
 // 
 // License:  MIT, 7-year CC0
 // 
-// Revision: 0.1
+// Revision: 0.2
+// Revision 0.2 - Changed to IPipelineData interface
 // Revision 0.1 - Added all except FENCE, ECALL, EBREAK
 // Revision 0.01 - File Created
 // Additional Comments:
@@ -24,40 +25,10 @@
 //////////////////////////////////////////////////////////////////////////////////
 `default_nettype uwire
 
-// Semantics of addressing all these things directly would cause large human error
-`define lopAdd DecoderPort.logicOp[0]
-`define lopShift DecoderPort.logicOp[1]
-`define lopCmp DecoderPort.logicOp[2]
-`define lopAND DecoderPort.logicOp[3]
-`define lopOR DecoderPort.logicOp[4]
-`define lopXOR DecoderPort.logicOp[5]
-`define lopMUL DecoderPort.logicOp[6]
-`define lopDIV DecoderPort.logicOp[7]
-`define lopIll DecoderPort.logicOp[8]
-`define lopLoad DecoderPort.logicOp[9]
-`define lopStore DecoderPort.logicOp[10]
-
-`define opB DecoderPort.opFlags[0]
-`define opH DecoderPort.opFlags[1]
-`define opW DecoderPort.opFlags[2]
-`define opD DecoderPort.opFlags[3]
-`define opUnS DecoderPort.opFlags[4]
-`define opAr DecoderPort.opFlags[5]
-`define opRSh DecoderPort.opFlags[6]
-`define opHSU DecoderPort.opFlags[7]
-`define opRem DecoderPort.opFlags[8]
-
-`define lrR DecoderPort.loadResource[0]
-`define lrI DecoderPort.loadResource[1]
-`define lrS DecoderPort.loadResource[2]
-`define lrB DecoderPort.loadResource[3]
-`define lrU DecoderPort.loadResource[4]
-`define lrJ DecoderPort.loadResource[5]
-`define lrUPC DecoderPort.loadResource[6]
-
 module RVIDecoderTable
 (
-    IDecoder.DecoderTable DecoderPort
+    IPipelineData.Decoder DecoderPort,
+    output logic Sel
 );
     // opcode
     let opcode = DecoderPort.insn[6:0];
@@ -78,14 +49,42 @@ module RVIDecoderTable
     // 1ui      1100011     BLT     BGE     BLTU        BGEU
     module Branch
     (
-        IDecoder.DecoderTable DecoderPort
+        IPipelineData.Decoder DecoderPort,
+        output logic Sel
     );
         always_comb
         begin
-            DecoderPort.logicOp = '0;
-            DecoderPort.opFlags = '0;
-            DecoderPort.loadResource = '0;
-            DecoderPort.Sel = 1'b0;
+            // Clear state
+            DecoderPort.lopAdd = 1'b0;
+            DecoderPort.lopShift = 1'b0;
+            DecoderPort.lopCmp = 1'b0;
+            DecoderPort.lopAND = 1'b0;
+            DecoderPort.lopOR = 1'b0;
+            DecoderPort.lopXOR = 1'b0;
+            DecoderPort.lopMUL = 1'b0;
+            DecoderPort.lopDIV = 1'b0;
+            DecoderPort.lopLoad = 1'b0;
+            DecoderPort.lopStore = 1'b0;
+            DecoderPort.lopIllegal = 1'b0;
+            
+            DecoderPort.opB = 1'b0;
+            DecoderPort.opH = 1'b0;
+            DecoderPort.opW = 1'b0;
+            DecoderPort.opD = 1'b0;
+            DecoderPort.opUnsigned = 1'b0;
+            DecoderPort.opArithmetic = 1'b0;
+            DecoderPort.opRightShift = 1'b0;
+            DecoderPort.opHSU = 1'b0;
+            DecoderPort.opRemainder = 1'b0;
+    
+            DecoderPort.lrR = 1'b0;
+            DecoderPort.lrI = 1'b0;
+            DecoderPort.lrS = 1'b0;
+            DecoderPort.lrB = 1'b0;
+            DecoderPort.lrU = 1'b0;
+            DecoderPort.lrJ = 1'b0;
+            
+            Sel = 1'b0;
             if (
                 ((opcode & 7'b1100011) == 7'b1100011)
                 && opcode[4] == 1'b0
@@ -94,12 +93,12 @@ module RVIDecoderTable
             begin
                 // Definitely a Branch/JAL/JALR opcode
                 // J-type JAL
-                `lrJ = (opcode[3:2] == 2'b11) ? 1'b1 : 1'b0;
+                DecoderPort.lrJ = (opcode[3:2] == 2'b11) ? 1'b1 : 1'b0;
                 // B-type Branch opcode; funct3 cannot be 010 or 011
-                `lrB = (opcode[3:2] == 2'b00 && funct3[2:1] != 2'b01) ? 1'b1 : 1'b0;
+                DecoderPort.lrB = (opcode[3:2] == 2'b00 && funct3[2:1] != 2'b01) ? 1'b1 : 1'b0;
                 // I-type JALR
-                `lrI = (opcode[3:2] == 2'b01 && funct3 == 3'b000) ? 1'b1 : 1'b0;
-                DecoderPort.Sel = `lrI | `lrB | `lrJ;
+                DecoderPort.lrI = (opcode[3:2] == 2'b01 && funct3 == 3'b000) ? 1'b1 : 1'b0;
+                DecoderPort.Sel = DecoderPort.lrI | DecoderPort.lrB | DecoderPort.lrJ;
                 // Ignore all invalid or non-branch instructions
             end
         end
@@ -125,14 +124,42 @@ module RVIDecoderTable
     // 011      0100011     SD
     module LoadStore
     (
-        IDecoder.DecoderTable DecoderPort
+        IPipelineData.Decoder DecoderPort,
+        output logic Sel
     );
         always_comb
         begin
-            DecoderPort.logicOp = '0;
-            DecoderPort.opFlags = '0;
-            DecoderPort.loadResource = '0;
-            DecoderPort.Sel = 1'b0;
+            // Clear state
+            DecoderPort.lopAdd = 1'b0;
+            DecoderPort.lopShift = 1'b0;
+            DecoderPort.lopCmp = 1'b0;
+            DecoderPort.lopAND = 1'b0;
+            DecoderPort.lopOR = 1'b0;
+            DecoderPort.lopXOR = 1'b0;
+            DecoderPort.lopMUL = 1'b0;
+            DecoderPort.lopDIV = 1'b0;
+            DecoderPort.lopLoad = 1'b0;
+            DecoderPort.lopStore = 1'b0;
+            DecoderPort.lopIllegal = 1'b0;
+            
+            DecoderPort.opB = 1'b0;
+            DecoderPort.opH = 1'b0;
+            DecoderPort.opW = 1'b0;
+            DecoderPort.opD = 1'b0;
+            DecoderPort.opUnsigned = 1'b0;
+            DecoderPort.opArithmetic = 1'b0;
+            DecoderPort.opRightShift = 1'b0;
+            DecoderPort.opHSU = 1'b0;
+            DecoderPort.opRemainder = 1'b0;
+    
+            DecoderPort.lrR = 1'b0;
+            DecoderPort.lrI = 1'b0;
+            DecoderPort.lrS = 1'b0;
+            DecoderPort.lrB = 1'b0;
+            DecoderPort.lrU = 1'b0;
+            DecoderPort.lrJ = 1'b0;
+            
+            Sel = 1'b0;
             if (
                    ((opcode | 7'b0100000) == 7'b0100011) // Load/Store
                 || (opcode == 7'b0110111) // LUI
@@ -141,7 +168,7 @@ module RVIDecoderTable
             begin
                 if ((opcode[5] == 1'b1) && (funct3[2] == 1'b1))
                     // Illegal instruction
-                    `lopIll = 1'b1;
+                    DecoderPort.lopIllegal = 1'b1;
                 else
                 begin
                     case (opcode)
@@ -149,25 +176,24 @@ module RVIDecoderTable
                         7'b0000011 || 7'b0100011:
                         begin
                             // LWU is also "110"
-                            `opUnS = funct3[2];
+                            DecoderPort.opUnsigned = funct3[2];
                             //64-bit LD/SD
-                            `opD = funct3[1] & funct3[0];
+                            DecoderPort.opD = funct3[1] & funct3[0];
                             // 32-bit LD/ST
-                            `opW = funct3[1] & ~`opD;
-                            `opH = funct3[0] & ~`opD;
+                            DecoderPort.opW = funct3[1] & ~DecoderPort.opD;
+                            DecoderPort.opH = funct3[0] & ~DecoderPort.opD;
                             // Operation load/store
-                            `lopLoad  = ~opcode[5];
-                            `lopStore = opcode[5];
-                            `lrI      = `lopLoad;
-                            `lrS      = `lopStore;
+                            DecoderPort.lopLoad  = ~opcode[5];
+                            DecoderPort.lopStore = opcode[5];
+                            DecoderPort.lrI      = DecoderPort.lopLoad;
+                            DecoderPort.lrS      = DecoderPort.lopStore;
                         end
                         7'b0110111 || 7'b0010111:
                         begin
                             // LUI/AUIPC
-                            `lopLoad = 1'b1;
-                            // U or UPC type?
-                            `lrU     = opcode[5];
-                            `lrUPC   = ~opcode[5];
+                            DecoderPort.lopLoad = 1'b1;
+                            // U type
+                            DecoderPort.lrU     = opcode[5];
                         end
                     endcase
                 end
@@ -192,14 +218,42 @@ module RVIDecoderTable
     // 0000000  111     0i1w011     AND                 ANDI
     module Arithmetic
     (
-        IDecoder.DecoderTable DecoderPort
+        IPipelineData.Decoder DecoderPort,
+        output logic Sel
     );
         always_comb
         begin
-            DecoderPort.logicOp = '0;
-            DecoderPort.opFlags = '0;
-            DecoderPort.loadResource = '0;
-            DecoderPort.Sel = 1'b0;
+            // Clear state
+            DecoderPort.lopAdd = 1'b0;
+            DecoderPort.lopShift = 1'b0;
+            DecoderPort.lopCmp = 1'b0;
+            DecoderPort.lopAND = 1'b0;
+            DecoderPort.lopOR = 1'b0;
+            DecoderPort.lopXOR = 1'b0;
+            DecoderPort.lopMUL = 1'b0;
+            DecoderPort.lopDIV = 1'b0;
+            DecoderPort.lopLoad = 1'b0;
+            DecoderPort.lopStore = 1'b0;
+            DecoderPort.lopIllegal = 1'b0;
+            
+            DecoderPort.opB = 1'b0;
+            DecoderPort.opH = 1'b0;
+            DecoderPort.opW = 1'b0;
+            DecoderPort.opD = 1'b0;
+            DecoderPort.opUnsigned = 1'b0;
+            DecoderPort.opArithmetic = 1'b0;
+            DecoderPort.opRightShift = 1'b0;
+            DecoderPort.opHSU = 1'b0;
+            DecoderPort.opRemainder = 1'b0;
+    
+            DecoderPort.lrR = 1'b0;
+            DecoderPort.lrI = 1'b0;
+            DecoderPort.lrS = 1'b0;
+            DecoderPort.lrB = 1'b0;
+            DecoderPort.lrU = 1'b0;
+            DecoderPort.lrJ = 1'b0;
+            
+            Sel = 1'b0;
             // Not RVI Arithmetic if these aren't met
             if (
                 ((opcode & 7'b0010011) == 7'b0010011) // These bits on
@@ -209,17 +263,17 @@ module RVIDecoderTable
                )
             begin
                 // extract W and I bits
-                `opW = opcode[3];
-                `opAr = funct7[5];
+                DecoderPort.opW = opcode[3];
+                DecoderPort.opArithmetic = funct7[5];
                 
                 // Arithmetic bit doesn't go to output for SUB
-                `lrR = opcode[5]; // R-type
-                `lrI = ~opcode[5]; // I-type 
+                DecoderPort.lrR = opcode[5]; // R-type
+                DecoderPort.lrI = ~opcode[5]; // I-type 
                 // Check for illegal instruction
                 if (
-                       ( (`opAr == 1'b1) && (funct3 != 3'b000) && (funct3 != 3'b101) ) // not SUB or SRA
-                    || ( (`lrI == 1'b1) && (funct3 == 3'b000) ) // SUBI isn't an opcode
-                    || ( (`opW == 1'b1) && (
+                       ( (DecoderPort.opAr == 1'b1) && (funct3 != 3'b000) && (funct3 != 3'b101) ) // not SUB or SRA
+                    || ( (DecoderPort.lrI == 1'b1) && (funct3 == 3'b000) ) // SUBI isn't an opcode
+                    || ( (DecoderPort.opW == 1'b1) && (
                                              (funct3 == 3'b010) // SLT
                                           || (funct3 == 3'b011) // SLTU
                                           || (funct3 == 3'b100) // XOR
@@ -230,8 +284,8 @@ module RVIDecoderTable
                    )
                 begin
                     // illegal instruction.  Don't Sel in case something else sees it as legal
-                    `lopIll = 1'b1;
-                    DecoderPort.Sel = 1'b0;
+                    DecoderPort.lopIllegal = 1'b1;
+                    Sel = 1'b0;
                 end
                 else
                 begin
@@ -239,32 +293,32 @@ module RVIDecoderTable
                     case (funct3)
                         3'b000:
                             // lrA determins add or subtract as per table above
-                            `lopAdd = 1'b1;
+                            DecoderPort.lopAdd = 1'b1;
                         3'b001 || 3'b101:
                         begin
-                            `lopShift = 1'b1;
+                            DecoderPort.lopShift = 1'b1;
                             // assign opAr = funct7(5); // Done above
                             // Right shift
-                            `opRSh = (funct3 == 3'b101) ? 1'b1 : 1'b0;
+                            DecoderPort.opRightShift = (funct3 == 3'b101) ? 1'b1 : 1'b0;
                         end
     
                         3'b010 || 3'b011:
                         begin
-                            `lopCmp = 1'b1;
-                            `opUnS = (funct3 == 3'b011) ? 1'b1 : 1'b0;
+                            DecoderPort.lopCmp = 1'b1;
+                            DecoderPort.opUnsigned = (funct3 == 3'b011) ? 1'b1 : 1'b0;
                         end
 
                         3'b100:
-                            `lopXOR = 1'b1;
+                            DecoderPort.lopXOR = 1'b1;
                         3'b110:
-                            `lopOR = 1'b1;
+                            DecoderPort.lopOR = 1'b1;
                         3'b111:
-                            `lopAND = 1'b1;
+                            DecoderPort.lopAND = 1'b1;
                     endcase
                 end 
             end
             else
-                DecoderPort.Sel = 1'b0;
+                Sel = 1'b0;
         end
     endmodule
 
@@ -278,14 +332,42 @@ module RVIDecoderTable
     // 1110011    1     EBREAK
     module System
     (
-        IDecoder.DecoderTable DecoderPort
+        IPipelineData.Decoder DecoderPort,
+        output logic Sel
     );
         always_comb
         begin
-            DecoderPort.logicOp = '0;
-            DecoderPort.opFlags = '0;
-            DecoderPort.loadResource = '0;
-            DecoderPort.Sel = 1'b0;
+            // Clear state
+            DecoderPort.lopAdd = 1'b0;
+            DecoderPort.lopShift = 1'b0;
+            DecoderPort.lopCmp = 1'b0;
+            DecoderPort.lopAND = 1'b0;
+            DecoderPort.lopOR = 1'b0;
+            DecoderPort.lopXOR = 1'b0;
+            DecoderPort.lopMUL = 1'b0;
+            DecoderPort.lopDIV = 1'b0;
+            DecoderPort.lopLoad = 1'b0;
+            DecoderPort.lopStore = 1'b0;
+            DecoderPort.lopIllegal = 1'b0;
+            
+            DecoderPort.opB = 1'b0;
+            DecoderPort.opH = 1'b0;
+            DecoderPort.opW = 1'b0;
+            DecoderPort.opD = 1'b0;
+            DecoderPort.opUnsigned = 1'b0;
+            DecoderPort.opArithmetic = 1'b0;
+            DecoderPort.opRightShift = 1'b0;
+            DecoderPort.opHSU = 1'b0;
+            DecoderPort.opRemainder = 1'b0;
+    
+            DecoderPort.lrR = 1'b0;
+            DecoderPort.lrI = 1'b0;
+            DecoderPort.lrS = 1'b0;
+            DecoderPort.lrB = 1'b0;
+            DecoderPort.lrU = 1'b0;
+            DecoderPort.lrJ = 1'b0;
+            
+            Sel = 1'b0;
             // FIXME:  implement these
             if (
                    opcode == 7'b1110011
@@ -294,10 +376,10 @@ module RVIDecoderTable
                )
             begin
                 // ECALL/EBREAK
-                // `lopSysCallBreak = 1'b1;
+                // DecoderPort.lopSysCallBreak = 1'b1;
             end
-            // `lopFence = (opcode == 7'b0001111) ? 1'b1 : 1'b0;
-            // DecoderPort.Sel = `lopFence & `lopSysCallBreak;
+            // DecoderPort.lopFence = (opcode == 7'b0001111) ? 1'b1 : 1'b0;
+            // DecoderPort.Sel = DecoderPort.lopFence & DecoderPort.lopSysCallBreak;
         end
     endmodule
 
@@ -308,7 +390,7 @@ module RVIDecoderTable
 
     Branch BranchDec(.DecoderPort(BranchPort));
     LoadStore LoadDec(.DecoderPort(LoadStorePort));
-    Arithmetic ArDec(.DecoderPort(ArithmeticPort));
+    Arithmetic ArithmeticDec(.DecoderPort(ArithmeticPort));
     System SystemDec(.DecoderPort(SystemPort));
 
     always_comb
@@ -316,69 +398,165 @@ module RVIDecoderTable
         // Huge 5:1 mux
         if (BranchDec.Sel == 1'b1)
         begin
-            DecoderPort.logicOp = BranchPort.logicOp;
-            DecoderPort.opFlags = BranchPort.opFlags;
-            DecoderPort.loadResource = BranchPort.loadResource;
+            DecoderPort.lopAdd = BranchPort.lopAdd;
+            DecoderPort.lopShift = BranchPort.lopShift;
+            DecoderPort.lopCmp = BranchPort.lopCmp;
+            DecoderPort.lopAND = BranchPort.lopAND;
+            DecoderPort.lopOR = BranchPort.lopOR;
+            DecoderPort.lopXOR = BranchPort.lopXOR;
+            DecoderPort.lopMUL = BranchPort.lopMUL;
+            DecoderPort.lopDIV = BranchPort.lopDIV;
+            DecoderPort.lopLoad = BranchPort.lopLoad;
+            DecoderPort.lopStore = BranchPort.lopStore;
+            DecoderPort.lopIllegal = BranchPort.lopIllegal;
+            
+            DecoderPort.opB = BranchPort.opB;
+            DecoderPort.opH = BranchPort.opH;
+            DecoderPort.opW = BranchPort.opW;
+            DecoderPort.opD = BranchPort.opD;
+            DecoderPort.opUnsigned = BranchPort.opUnsigned;
+            DecoderPort.opArithmetic = BranchPort.opArithmetic;
+            DecoderPort.opRightShift = BranchPort.opRightShift;
+            DecoderPort.opHSU = BranchPort.opHSU;
+            DecoderPort.opRemainder = BranchPort.opRemainder;
+    
+            DecoderPort.lrR = BranchPort.lrR;
+            DecoderPort.lrI = BranchPort.lrI;
+            DecoderPort.lrS = BranchPort.lrS;
+            DecoderPort.lrB = BranchPort.lrB;
+            DecoderPort.lrU = BranchPort.lrU;
+            DecoderPort.lrJ = BranchPort.lrJ;
         end
-        else if (LoadStorePort.Sel == 1'b1)
+        else if (LoadDec.Sel == 1'b1)
         begin
-            DecoderPort.logicOp = LoadStorePort.logicOp;
-            DecoderPort.opFlags = LoadStorePort.opFlags;
-            DecoderPort.loadResource = LoadStorePort.loadResource;
+            DecoderPort.lopAdd = LoadStorePort.lopAdd;
+            DecoderPort.lopShift = LoadStorePort.lopShift;
+            DecoderPort.lopCmp = LoadStorePort.lopCmp;
+            DecoderPort.lopAND = LoadStorePort.lopAND;
+            DecoderPort.lopOR = LoadStorePort.lopOR;
+            DecoderPort.lopXOR = LoadStorePort.lopXOR;
+            DecoderPort.lopMUL = LoadStorePort.lopMUL;
+            DecoderPort.lopDIV = LoadStorePort.lopDIV;
+            DecoderPort.lopLoad = LoadStorePort.lopLoad;
+            DecoderPort.lopStore = LoadStorePort.lopStore;
+            DecoderPort.lopIllegal = LoadStorePort.lopIllegal;
+            
+            DecoderPort.opB = LoadStorePort.opB;
+            DecoderPort.opH = LoadStorePort.opH;
+            DecoderPort.opW = LoadStorePort.opW;
+            DecoderPort.opD = LoadStorePort.opD;
+            DecoderPort.opUnsigned = LoadStorePort.opUnsigned;
+            DecoderPort.opArithmetic = LoadStorePort.opArithmetic;
+            DecoderPort.opRightShift = LoadStorePort.opRightShift;
+            DecoderPort.opHSU = LoadStorePort.opHSU;
+            DecoderPort.opRemainder = LoadStorePort.opRemainder;
+    
+            DecoderPort.lrR = LoadStorePort.lrR;
+            DecoderPort.lrI = LoadStorePort.lrI;
+            DecoderPort.lrS = LoadStorePort.lrS;
+            DecoderPort.lrB = LoadStorePort.lrB;
+            DecoderPort.lrU = BranchPort.lrU;
+            DecoderPort.lrJ = BranchPort.lrJ;
         end
-        else if (ArithmeticPort.Sel == 1'b1)
+        else if (ArithmeticDec.Sel == 1'b1)
         begin
-            DecoderPort.logicOp = ArithmeticPort.logicOp;
-            DecoderPort.opFlags = ArithmeticPort.opFlags;
-            DecoderPort.loadResource = ArithmeticPort.loadResource;
+            DecoderPort.lopAdd = ArithmeticPort.lopAdd;
+            DecoderPort.lopShift = ArithmeticPort.lopShift;
+            DecoderPort.lopCmp = ArithmeticPort.lopCmp;
+            DecoderPort.lopAND = ArithmeticPort.lopAND;
+            DecoderPort.lopOR = ArithmeticPort.lopOR;
+            DecoderPort.lopXOR = ArithmeticPort.lopXOR;
+            DecoderPort.lopMUL = ArithmeticPort.lopMUL;
+            DecoderPort.lopDIV = ArithmeticPort.lopDIV;
+            DecoderPort.lopLoad = ArithmeticPort.lopLoad;
+            DecoderPort.lopStore = ArithmeticPort.lopStore;
+            DecoderPort.lopIllegal = ArithmeticPort.lopIllegal;
+            
+            DecoderPort.opB = ArithmeticPort.opB;
+            DecoderPort.opH = ArithmeticPort.opH;
+            DecoderPort.opW = ArithmeticPort.opW;
+            DecoderPort.opD = ArithmeticPort.opD;
+            DecoderPort.opUnsigned = ArithmeticPort.opUnsigned;
+            DecoderPort.opArithmetic = ArithmeticPort.opArithmetic;
+            DecoderPort.opRightShift = ArithmeticPort.opRightShift;
+            DecoderPort.opHSU = ArithmeticPort.opHSU;
+            DecoderPort.opRemainder = ArithmeticPort.opRemainder;
+    
+            DecoderPort.lrR = ArithmeticPort.lrR;
+            DecoderPort.lrI = ArithmeticPort.lrI;
+            DecoderPort.lrS = ArithmeticPort.lrS;
+            DecoderPort.lrB = ArithmeticPort.lrB;
+            DecoderPort.lrU = BranchPort.lrU;
+            DecoderPort.lrJ = BranchPort.lrJ;
         end
-        else if (SystemPort.Sel == 1'b1)
+        else if (SystemDec.Sel == 1'b1)
         begin
-            DecoderPort.logicOp = SystemPort.logicOp;
-            DecoderPort.opFlags = SystemPort.opFlags;
-            DecoderPort.loadResource = SystemPort.loadResource;
+            DecoderPort.lopAdd = SystemPort.lopAdd;
+            DecoderPort.lopShift = SystemPort.lopShift;
+            DecoderPort.lopCmp = SystemPort.lopCmp;
+            DecoderPort.lopAND = SystemPort.lopAND;
+            DecoderPort.lopOR = SystemPort.lopOR;
+            DecoderPort.lopXOR = SystemPort.lopXOR;
+            DecoderPort.lopMUL = SystemPort.lopMUL;
+            DecoderPort.lopDIV = SystemPort.lopDIV;
+            DecoderPort.lopLoad = SystemPort.lopLoad;
+            DecoderPort.lopStore = SystemPort.lopStore;
+            DecoderPort.lopIllegal = SystemPort.lopIllegal;
+            
+            DecoderPort.opB = SystemPort.opB;
+            DecoderPort.opH = SystemPort.opH;
+            DecoderPort.opW = SystemPort.opW;
+            DecoderPort.opD = SystemPort.opD;
+            DecoderPort.opUnsigned = SystemPort.opUnsigned;
+            DecoderPort.opArithmetic = SystemPort.opArithmetic;
+            DecoderPort.opRightShift = SystemPort.opRightShift;
+            DecoderPort.opHSU = SystemPort.opHSU;
+            DecoderPort.opRemainder = SystemPort.opRemainder;
+    
+            DecoderPort.lrR = SystemPort.lrR;
+            DecoderPort.lrI = SystemPort.lrI;
+            DecoderPort.lrS = SystemPort.lrS;
+            DecoderPort.lrB = SystemPort.lrB;
+            DecoderPort.lrU = SystemPort.lrU;
+            DecoderPort.lrJ = SystemPort.lrJ;
         end
         else
         begin
-            DecoderPort.logicOp = '0;
-            DecoderPort.opFlags = '0;
-            DecoderPort.loadResource = '0;
+            // Clear state
+            DecoderPort.lopAdd = 1'b0;
+            DecoderPort.lopShift = 1'b0;
+            DecoderPort.lopCmp = 1'b0;
+            DecoderPort.lopAND = 1'b0;
+            DecoderPort.lopOR = 1'b0;
+            DecoderPort.lopXOR = 1'b0;
+            DecoderPort.lopMUL = 1'b0;
+            DecoderPort.lopDIV = 1'b0;
+            DecoderPort.lopLoad = 1'b0;
+            DecoderPort.lopStore = 1'b0;
+            DecoderPort.lopIllegal = 1'b0;
+            
+            DecoderPort.opB = 1'b0;
+            DecoderPort.opH = 1'b0;
+            DecoderPort.opW = 1'b0;
+            DecoderPort.opD = 1'b0;
+            DecoderPort.opUnsigned = 1'b0;
+            DecoderPort.opArithmetic = 1'b0;
+            DecoderPort.opRightShift = 1'b0;
+            DecoderPort.opHSU = 1'b0;
+            DecoderPort.opRemainder = 1'b0;
+    
+            DecoderPort.lrR = 1'b0;
+            DecoderPort.lrI = 1'b0;
+            DecoderPort.lrS = 1'b0;
+            DecoderPort.lrB = 1'b0;
+            DecoderPort.lrU = 1'b0;
+            DecoderPort.lrJ = 1'b0;
             // Illegal…instruction?  No you're not going to jail, do not unplug...!
             // We're not raising Sel anyway
-            // `lopIll = 1'b1;
+            // DecoderPort.lopIll = 1'b1;
         end
         
         // Only raise Sel if we decoded an instruction 
-        DecoderPort.Sel = BranchPort.Sel + LoadStorePort.Sel + ArithmeticPort.Sel;
+        Sel = BranchDec.Sel | LoadDec.Sel | ArithmeticPort.Sel;
     end
 endmodule
-
-`undef lopAdd
-`undef lopShift
-`undef lopCmp
-`undef lopAND
-`undef lopOR
-`undef lopXOR
-`undef lopMUL
-`undef lopDIV
-`undef lopIll
-`undef lopLoad
-`undef lopStore
-
-`undef opB
-`undef opH
-`undef opW
-`undef opD
-`undef opUnS
-`undef opAr
-`undef opRSh
-`undef opHSU
-`undef opRem
-
-`undef lrR
-`undef lrI
-`undef lrS
-`undef lrB
-`undef lrU
-`undef lrJ
-`undef lrUPC

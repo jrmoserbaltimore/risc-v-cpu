@@ -25,70 +25,32 @@
 //////////////////////////////////////////////////////////////////////////////////
 `default_nettype uwire
 
-// Semantics of addressing all these things directly would cause large human error
-`define lopAdd ALUPort.logicOp[0]
-`define lopShift ALUPort.logicOp[1]
-`define lopCmp ALUPort.logicOp[2]
-`define lopAND ALUPort.logicOp[3]
-`define lopOR ALUPort.logicOp[4]
-`define lopXOR ALUPort.logicOp[5]
-`define lopMUL ALUPort.logicOp[6]
-`define lopDIV ALUPort.logicOp[7]
-
-`define opB ALUPort.opFlags[0]
-`define opH ALUPort.opFlags[1]
-`define opW ALUPort.opFlags[2]
-`define opD ALUPort.opFlags[3]
-`define opUnS ALUPort.opFlags[4]
-`define opAr ALUPort.opFlags[5]
-`define opRSh ALUPort.opFlags[6]
-`define opHSU ALUPort.opFlags[7]
-`define opRem ALUPort.opFlags[8]
-
 module FullALU
 #(
     XLEN = 32
 )
 (
-    IALU.ALU ALUPort
+    input logic Clk,
+    IPipelineData.ALU ALUPort
 );
 
-    always_ff@(posedge ALUPort.Clk)
+    always_ff@(posedge Clk)
     begin
-        if (`lopAdd == 1'b1 && `opAr == 1'b0)
+        if (ALUPort.lopAdd == 1'b1 && ALUPort.opArithmetic == 1'b0)
             // FIXME:  han-carlson, ladner-fischer, or carry-select module.
             // Pass opAr as the sub flag to the module
             assign ALUPort.rd = ALUPort.rs1 + ALUPort.rs2;
-        else if (`lopAdd == 1'b1 && `opAr == 1'b1)
+        else if (ALUPort.lopAdd == 1'b1 && ALUPort.opArithmetic == 1'b1)
             // FIXME:  Remove in favor of adder-subtractor
             assign ALUPort.rd = ALUPort.rs1 - ALUPort.rs2;
         // FIXME:  Shift, Comparator
         // There are basic gates
-        else if (`lopAND == 1'b1)
+        else if (ALUPort.lopAND == 1'b1)
             assign ALUPort.rd = ALUPort.rs1 & ALUPort.rs2;
-        else if (`lopOR == 1'b1)
+        else if (ALUPort.lopOR == 1'b1)
             assign ALUPort.rd = ALUPort.rs1 | ALUPort.rs2;
-        else if (`lopXOR == 1'b1)
+        else if (ALUPort.lopXOR == 1'b1)
             assign ALUPort.rd = ALUPort.rs1 ^ ALUPort.rs2;
         // FIXME:  MUL, DIV
     end;
 endmodule
-
-`undef lopAdd
-`undef lopShift
-`undef lopCmp
-`undef lopAND
-`undef lopOR
-`undef lopXOR
-`undef lopMUL
-`undef lopDIV
-
-`undef opB
-`undef opH
-`undef opW
-`undef opD
-`undef opUnS
-`undef opAr
-`undef opRSh
-`undef opHSU
-`undef opRem
