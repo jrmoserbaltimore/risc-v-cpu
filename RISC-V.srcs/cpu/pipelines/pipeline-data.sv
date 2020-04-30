@@ -30,22 +30,22 @@ interface IPipelineData
     parameter XLEN = 32,
     FetchSize = 32
 );
-    logic [31:0] insn;
+    logic [31:0] insn = '0;
     // Extra data from Fetch, if wide bus.  Append to insn.
-    logic [FetchSize-32:0] FetchData;
+    logic [FetchSize-32:0] FetchData = '0;
     
-    logic[31:0] misa;
-    logic[XLEN-1:0] mstatus;
-    bit[1:0] ring;
+    logic[31:0] misa = '0;
+    logic[XLEN-1:0] mstatus = '0;
+    bit[1:0] ring = '0;
 
-    logic[XLEN-1:0] rs1;
-    logic[XLEN-1:0] rs2;
-    logic[XLEN-1:0] rd;
+    logic[XLEN-1:0] rs1 = '0;
+    logic[XLEN-1:0] rs2 = '0;
+    logic[XLEN-1:0] rd = '0;
     // Exec stage cannot Strobe if Ready = 0
-    logic Ready;
+    logic Ready = '0;
 
     // XLEN can only increment/decrement by 2 (4 without RVC)
-    logic[XLEN-2:0] pc;
+    logic[XLEN-2:0] pc = '0;
     
     // ----------------------
     // -- Logic Operations --
@@ -54,80 +54,80 @@ interface IPipelineData
 
     // ALU ops
     // add, sub: ADD, ADDI, SUB; 64 ADDW, ADDIW, SUBW
-    logic lopAdd;
+    logic lopAdd = '0;
     // shift: SLL, SLLI, SRL, SRLI, SRA; 64 SLLIW, SRRIW, SRAIW
-    logic lopShift;
+    logic lopShift = '0;
     // Comparator (SLT, SLTU, SLTI, SLTIU)
-    logic lopCmp;
+    logic lopCmp = '0;
     // AND: AND, ANDI
-    logic lopAND;
+    logic lopAND = '0;
     // OR: OR, ORI
-    logic lopOR;
+    logic lopOR = '0;
     // XOR: XOR, XORI
-    logic lopXOR;
+    logic lopXOR = '0;
     
     // Extension: M
     // Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
-    logic lopMUL;
+    logic lopMUL = '0;
     // Divider: DIV, DIVU, REM, REMU; 64 DIVW, DIVUW, REMW, REMUW
-    logic lopDIV;
+    logic lopDIV = '0;
     
     // Non-ALU ops
     // Load/Store
-    logic lopLoad;
-    logic lopStore;
+    logic lopLoad = '0;
+    logic lopStore = '0;
     // illegal instruction
-    logic lopIllegal;
+    logic lopIllegal = '0;
 
     // --------------------
     // -- Operation Flags--
     // --------------------
     // Word sizes: Byte, Half, Word, Double
-    logic opB;
-    logic opH;
-    logic opW;
-    logic opD;
+    logic opB = '0;
+    logic opH = '0;
+    logic opW = '0;
+    logic opD = '0;
     // Unsigned
-    logic opUnsigned;
+    logic opUnsigned = '0;
     // Arithmetic is also Adder-Subtractor subtract
-    logic opArithmetic;
-    logic opRightShift;
+    logic opArithmetic = '0;
+    logic opRightShift = '0;
     // MULHSU and DIV Remainder REM
-    logic opHSU;
-    logic opRemainder;
+    logic opHSU = '0;
+    logic opRemainder = '0;
 
     // Load resource:   Type        what to load
     // bit 0:  R-type   Register    (rs1, rs2)
-    logic lrR;
+    logic lrR = '0;
     // bit 1:  I-type   Immediate   (rs1, insn[31:20] sign-extend)
-    logic lrI;
+    logic lrI = '0;
     // bit 2:  S-Type   Store       (rs1, insn[31:25] insn[11:7] sign-extended)
-    logic lrS;
+    logic lrS = '0;
     // bit 3:  B-type   Branch      (rs1, rs2, insn[31] insn[7] insn[30:25] insn[11:8] sign-extend)
-    logic lrB;
+    logic lrB = '0;
     // bit 4:  U-type   Upper-Imm   (insn[31:12])
-    logic lrU;
+    logic lrU = '0;
     // bit 5:  J-type   Jump        (insn[31] insn[19:12] insn[20] insn[30:21] sign-extend)
-    logic lrJ;
+    logic lrJ = '0;
 
     // misa flags
-    logic misaA;
+    logic misaA = '0;
     logic misaB;
-    logic misaC;
+    logic misaC = '0;
     logic misaD;
     logic misaE;
     logic misaF;
     // Unassigned
     logic misaG;
     
-    logic misaH;
-    logic misaI;
+    logic misaH = '0;
+    logic misaI = '0;
     // Unassigned
     logic misaJ;
     logic misaK;
     logic misaL;
     
-    logic misaM;
+    logic misaM = '0;
     logic misaN;
     // Unassigned
     logic misaO;
