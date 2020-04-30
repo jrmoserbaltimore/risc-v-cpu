@@ -29,22 +29,21 @@ interface IBarrelShifter
 #(
     parameter XLEN = 32
 );
-    logic Din[XLEN-1:0];
-    logic Shift[$clog2(XLEN):0];
-    logic Dout[XLEN-1:0];    
+    logic [XLEN-1:0] Din;
+    logic [$clog2(XLEN):0] Shift;
+    logic [XLEN-1:0] Dout;    
     // Operation flags
     // bit 0:  Arithmetic (and Adder-Subtractor subtract)
     // bit 1:  Right shift
-    logic opFlags[1:0];
-
-    let opArithmetic = opFlags(0);
-    let opRightShift = opFlags(0);
+    logic opArithmetic;
+    logic opRightShift;
 
     modport Shifter
     (
         input Din,
         input Shift,
-        input opFlags,
+        input opArithmetic,
+        input opRightShift,
         output Dout
     );
     
@@ -52,7 +51,8 @@ interface IBarrelShifter
     (
         output Din,
         output Shift,
-        output opFlags,
+        output opArithmetic,
+        output opRightShift,
         input Dout
     );
 endinterface
@@ -67,11 +67,11 @@ module BarrelShifter
 
     logic SignEx;
 
-    let opArithmetic = Shifter.opFlags[0];
-    let opRightShift = Shifter.opFlags[0];
-
-    // Sign-extend using the MSB of DN if both shifting right and arithmetic
-    and (SignEx, Shifter.Din[XLEN-1], opArithmetic, opRightShift);
+    always_comb
+    begin
+        // Sign-extend using the MSB of DN if both shifting right and arithmetic
+        SignEx = Shifter.Din[XLEN-1] & Shifter.opArithmetic & Shifter.opRightShift;
+    end
 
     generate
         genvar row;
@@ -83,7 +83,7 @@ module BarrelShifter
         for (col = 0; col <= XLEN-1; col++) begin
             // Reverse if right shift
             // A bunch of 2-to-1 mux to reverse on arithmetic
-            assign tree[0][col] = (opRightShift == 0)
+            assign tree[0][col] = (Shifter.opRightShift == 0)
               ? Shifter.Din[col]
               : Shifter.Din[(XLEN-1)-col];
         end
@@ -91,22 +91,22 @@ module BarrelShifter
         for (row = 0; row <= $clog2(XLEN); row++) begin
             // Row by row shift left
             for (col = 0; col <= XLEN-1; col++) begin
-                if (col <= 2**row) begin
+                if (col < 2**row) begin
                     // Set the bits being shifted in if shifting this row.
                     // if right-shift arithmetic, extend sign
-                    assign tree[row+1][col] = (Shifter.Shift[row] = 0) ? tree[row][col] : SignEx;
+                    assign tree[row+1][col] = (Shifter.Shift[row] == 0) ? tree[row][col] : SignEx;
                 end
                 else begin
-                    assign tree[row+1][col] = (Shifter.Shift[row] = 0)
+                    assign tree[row+1][col] = (Shifter.Shift[row] == 0)
                       ? tree[row][col]
-                      : tree[row][col-2**row];
+                      : tree[row][col-(2**row)];
                 end
             end
         end
 
         for (col = 0; col <= XLEN-1; col++) begin
             // Reverse back for right shift
-            assign Shifter.Dout[col] = (opRightShift == 0)
+            assign Shifter.Dout[col] = (Shifter.opRightShift == 0)
               ? tree[$clog2(XLEN)+1][col]
               : tree[$clog2(XLEN)+1][(XLEN-1)-col];
         end

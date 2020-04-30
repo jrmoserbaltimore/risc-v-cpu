@@ -30,22 +30,22 @@ interface IPipelineData
     parameter XLEN = 32,
     FetchSize = 32
 );
-    logic insn[31:0];
+    logic [31:0] insn;
     // Extra data from Fetch, if wide bus.  Append to insn.
-    logic FetchData[FetchSize-32:0];
+    logic [FetchSize-32:0] FetchData;
     
-    logic misa[31:0];
-    logic mstatus[XLEN-1:0];
-    bit ring[1:0];
+    logic[31:0] misa;
+    logic[XLEN-1:0] mstatus;
+    bit[1:0] ring;
 
-    logic rs1[XLEN-1:0];
-    logic rs2[XLEN-1:0];
-    logic rd[XLEN-1:0];
+    logic[XLEN-1:0] rs1;
+    logic[XLEN-1:0] rs2;
+    logic[XLEN-1:0] rd;
     // Exec stage cannot Strobe if Ready = 0
     logic Ready;
 
     // XLEN can only increment/decrement by 2 (4 without RVC)
-    logic pc[XLEN-2:0];
+    logic[XLEN-2:0] pc;
     
     // ----------------------
     // -- Logic Operations --
