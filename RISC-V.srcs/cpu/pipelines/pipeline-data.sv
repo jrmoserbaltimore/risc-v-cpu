@@ -27,9 +27,13 @@
 
 interface IPipelineData
 #(
-    parameter XLEN = 32
+    parameter XLEN = 32,
+    FetchSize = 32
 );
     logic insn[31:0];
+    // Extra data from Fetch, if wide bus.  Append to insn.
+    logic FetchData[FetchSize-32:0];
+    
     logic misa[31:0];
     logic mstatus[XLEN-1:0];
     bit ring[1:0];
@@ -147,11 +151,61 @@ interface IPipelineData
     logic misaY;
     logic misaZ;
 
-    modport Decoder
+    modport FetchOut
+    (
+        output FetchData
+    );
+    
+    modport FetchIn
+    (
+        input FetchData
+    );
+
+    // Used in most stages.  Sends context information forward.
+    modport ContextOut
+    (
+        output insn,
+        output mstatus,
+        output ring,
+        output pc,
+        
+        output misaA,
+        output misaB,
+        output misaC,
+        output misaD,
+        output misaE,
+        output misaF,
+        output misaG,
+        output misaH,
+        output misaI,
+        output misaJ,
+        output misaK,
+        output misaL,
+        output misaM,
+        output misaN,
+        output misaO,
+        output misaP,
+        output misaQ,
+        output misaR,
+        output misaS,
+        output misaT,
+        output misaU,
+        output misaV,
+        output misaW,
+        output misaX,
+        output misaY,
+        output misaZ
+    );
+
+    // Provides inputs used for most stages
+    // A translation layer (e.g. RVC) is a context in (from Fetch) and a context out
+    // (to Decode).
+    modport ContextIn
     (
         input insn,
         input mstatus,
         input ring,
+        input pc,
         
         input misaA,
         input misaB,
@@ -178,8 +232,15 @@ interface IPipelineData
         input misaW,
         input misaX,
         input misaY,
-        input misaZ,
-        
+        input misaZ
+    );
+
+    // Decode:  take fetched data, analyze, mark up single-bits signaling what kind
+    // of operation to carry out.
+    //
+    // These are the results
+    modport DecodedOut
+    (
         output lopAdd,
         output lopShift,
         output lopCmp,
@@ -210,12 +271,59 @@ interface IPipelineData
         output lrJ
     );
 
+    modport DecodedIn
+    (
+        input lopAdd,
+        input lopShift,
+        input lopCmp,
+        input lopAND,
+        input lopOR,
+        input lopXOR,
+        input lopMUL,
+        input lopDIV,
+        input lopLoad,
+        input lopStore,
+        input lopIllegal,
+        
+        input opB,
+        input opH,
+        input opW,
+        input opD,
+        input opUnsigned,
+        input opArithmetic,
+        input opRightShift,
+        input opHSU,
+        input opRemainder,
+
+        input lrR,
+        input lrI,
+        input lrS,
+        input lrB,
+        input lrU,
+        input lrJ
+    );
+
+    // Loaded data
+    // B and S type instructions use two registers and an immediate, but those instructions
+    // are also rigid in their data sources (always two registers and the immediate) and so
+    // don't benefit from having these parsed out
+    modport LoadedOut
+    (
+        output rs1,
+        output rs2
+    );
+    
+    modport LoadedIn
+    (
+        input rs1,
+        input rs2
+    );
+
+    // ALU port
     modport ALU
     (
         input insn,
-        input rs1,
-        input rs2,
-        
+
         input lopAdd,
         input lopShift,
         input lopCmp,

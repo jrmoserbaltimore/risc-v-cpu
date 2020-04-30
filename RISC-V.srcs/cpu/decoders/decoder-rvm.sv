@@ -26,16 +26,17 @@
 
 module RVMDecoderTable
 (
-    IPipelineData.Decoder DecoderPort,
+    IPipelineData.ContextIn ContextIn,
+    IPipelineData.DecodedOut DecodedOut,
     output logic Sel 
 );
     // opcode
-    let opcode = DecoderPort.insn[6:0];
-    let funct3 = DecoderPort.insn[14:12];
+    let opcode = ContextIn.insn[6:0];
+    let funct3 = ContextIn.insn[14:12];
     // I-type immediate value
-    let imm = DecoderPort.insn[31:20];
+    let imm = ContextIn.insn[31:20];
     // R-type
-    let funct7 = DecoderPort.insn[31:25];
+    let funct7 = ContextIn.insn[31:25];
 
     // ----------------------------
     //  -- RV32M/RV64M operations --
@@ -53,37 +54,37 @@ module RVMDecoderTable
     always_comb
     begin
         // Not supported, so don't decode.
-        if (DecoderPort.misaM == 1'b1)
+        if (ContextIn.misaM == 1'b1)
         begin
             // Clear state
-            DecoderPort.lopAdd = 1'b0;
-            DecoderPort.lopShift = 1'b0;
-            DecoderPort.lopCmp = 1'b0;
-            DecoderPort.lopAND = 1'b0;
-            DecoderPort.lopOR = 1'b0;
-            DecoderPort.lopXOR = 1'b0;
-            DecoderPort.lopMUL = 1'b0;
-            DecoderPort.lopDIV = 1'b0;
-            DecoderPort.lopLoad = 1'b0;
-            DecoderPort.lopStore = 1'b0;
-            DecoderPort.lopIllegal = 1'b0;
+            DecodedOut.lopAdd = 1'b0;
+            DecodedOut.lopShift = 1'b0;
+            DecodedOut.lopCmp = 1'b0;
+            DecodedOut.lopAND = 1'b0;
+            DecodedOut.lopOR = 1'b0;
+            DecodedOut.lopXOR = 1'b0;
+            DecodedOut.lopMUL = 1'b0;
+            DecodedOut.lopDIV = 1'b0;
+            DecodedOut.lopLoad = 1'b0;
+            DecodedOut.lopStore = 1'b0;
+            DecodedOut.lopIllegal = 1'b0;
             
-            DecoderPort.opB = 1'b0;
-            DecoderPort.opH = 1'b0;
-            DecoderPort.opW = 1'b0;
-            DecoderPort.opD = 1'b0;
-            DecoderPort.opUnsigned = 1'b0;
-            DecoderPort.opArithmetic = 1'b0;
-            DecoderPort.opRightShift = 1'b0;
-            DecoderPort.opHSU = 1'b0;
-            DecoderPort.opRemainder = 1'b0;
+            DecodedOut.opB = 1'b0;
+            DecodedOut.opH = 1'b0;
+            DecodedOut.opW = 1'b0;
+            DecodedOut.opD = 1'b0;
+            DecodedOut.opUnsigned = 1'b0;
+            DecodedOut.opArithmetic = 1'b0;
+            DecodedOut.opRightShift = 1'b0;
+            DecodedOut.opHSU = 1'b0;
+            DecodedOut.opRemainder = 1'b0;
     
-            DecoderPort.lrR = 1'b0;
-            DecoderPort.lrI = 1'b0;
-            DecoderPort.lrS = 1'b0;
-            DecoderPort.lrB = 1'b0;
-            DecoderPort.lrU = 1'b0;
-            DecoderPort.lrJ = 1'b0;
+            DecodedOut.lrR = 1'b0;
+            DecodedOut.lrI = 1'b0;
+            DecodedOut.lrS = 1'b0;
+            DecodedOut.lrB = 1'b0;
+            DecodedOut.lrU = 1'b0;
+            DecodedOut.lrJ = 1'b0;
             
             Sel = 1'b0;
             if (
@@ -97,26 +98,26 @@ module RVMDecoderTable
            begin
                 // Essential mask 011_011
                 // This covers everything so we're good
-                DecoderPort.Sel = 1'b1;
+                Sel = 1'b1;
                 // extract W bit
-                DecoderPort.opW = opcode[3];
-                if ( !((DecoderPort.opW == 1'b1) && (funct3[2] == 1'b0) && (funct3 != 3'b000)) )
+                DecodedOut.opW = opcode[3];
+                if ( !((DecodedOut.opW == 1'b1) && (funct3[2] == 1'b0) && (funct3 != 3'b000)) )
                 begin
                     // funct3 = 0xx mul, 1xx div
-                    DecoderPort.lopMUL <= ~funct3[2];
-                    DecoderPort.lopDIV <= funct3[2];
+                    DecodedOut.lopMUL = ~funct3[2];
+                    DecodedOut.lopDIV = funct3[2];
                     // Half-word if MUL[H|HU|HSU]
-                    DecoderPort.opH = (DecoderPort.lopMUL == 1'b0 && funct3[1:0] != 2'b00) ? 1'b1 : 1'b0;
+                    DecodedOut.opH = (DecodedOut.lopMUL == 1'b0 && funct3[1:0] != 2'b00) ? 1'b1 : 1'b0;
                     // Unsigned
-                    DecoderPort.opUnsigned = (
+                    DecodedOut.opUnsigned = (
                                  (funct3[2] & funct3[0] == 1'b1) // DIVU/REMU
                               || (funct3[2] == 1'b0 && funct3[1] == 1'b1) // MULHU/HSU
                              ) ? 1'b1 : 1'b0;
                     // Remainder
-                    //DecoderPort.opRemainder = (funct3[2:1] == 2'b11) ? 1'b1 : 1'b0;
-                    DecoderPort.opRemainder = funct3[2] & funct3[1];
+                    //DecodedOut.opRemainder = (funct3[2:1] == 2'b11) ? 1'b1 : 1'b0;
+                    DecodedOut.opRemainder = funct3[2] & funct3[1];
                     // MULHSU
-                    DecoderPort.opHSU = (funct3 == 3'b010) ? 1'b1 : 1'b0;
+                    DecodedOut.opHSU = (funct3 == 3'b010) ? 1'b1 : 1'b0;
                 end
             end
         end
