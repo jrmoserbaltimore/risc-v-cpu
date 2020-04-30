@@ -45,7 +45,7 @@ module TALUTests
     end
     always #ClkDelay Clk = ~Clk;
 
-    always@(posedge Clk)
+    always_ff@(posedge Clk)
     begin
         if (IALU.DecodedIn.lopAdd == 1'b1)
         begin
@@ -107,10 +107,10 @@ module TALUTests
         IALU.LoadedOut.rs1 = 8'b10110101;
         IALU.LoadedOut.rs2 = 8'b00000011;
         
-        assign Ibs.Shifter.Din = IALU.LoadedIn.rs1; //8'b10110101;
-        assign Ibs.Shifter.Shift = IALU.LoadedIn.rs2[$clog2(8):0]; //4'b0011;
-        assign Ibs.Shifter.opArithmetic = IALU.DecodedIn.opArithmetic;
-        assign Ibs.Shifter.opRightShift = IALU.DecodedIn.opRightShift;
+        Ibs.Shifter.Din = IALU.LoadedIn.rs1; //8'b10110101;
+        Ibs.Shifter.Shift = IALU.LoadedIn.rs2[$clog2(8):0]; //4'b0011;
+        Ibs.Shifter.opArithmetic = IALU.DecodedIn.opArithmetic;
+        Ibs.Shifter.opRightShift = IALU.DecodedIn.opRightShift;
     end
     
     

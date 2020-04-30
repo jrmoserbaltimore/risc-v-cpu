@@ -35,6 +35,8 @@
 //   OOE:  add current insn to forward dependencies, put in buffer,
 //         start on next instruction; not meaningfully different
 // Stage 4:  load registers and sign-extend
+//   - Modify opFlags etc. based on processor feature settings
+//   - Assign opFlags for word width (BHWD) by current XLEN if none set
 // Stage 5:  execute instruction
 // Stage 6:  memory fetch or write (for LOAD/STORE)
 // Stage 7:  retire (write all registers)
