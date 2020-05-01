@@ -38,31 +38,36 @@ module FullALU
     IBarrelShifter #(XLEN) Ibs();
     BarrelShifter #(XLEN) bs(.Shifter(Ibs.Shifter));
 
+    IAdder #(XLEN) IAdd();
+    HanCarlsonAdder #(XLEN) HCAdder(.DataPort(IAdd.Adder));
+    
     always_ff@(posedge Clk)
     begin
-        if (ALUPort.lopAdd == 1'b1 && ALUPort.opArithmetic == 1'b0)
-            // FIXME:  han-carlson, ladner-fischer, or carry-select module.
-            // Pass opAr as the sub flag to the module
-            assign ALUPort.rd = DataPort.rs1 + DataPort.rs2;
-        else if (ALUPort.lopAdd == 1'b1 && ALUPort.opArithmetic == 1'b1)
-            // FIXME:  Remove in favor of adder-subtractor
-            assign ALUPort.rd = DataPort.rs1 - DataPort.rs2;
+        if (ALUPort.lopAdd == 1'b1)
+        begin
+            IAdd.A = DataPort.rs1;
+            IAdd.B = DataPort.rs2;
+            IAdd.Sub = ALUPort.opArithmetic;
+            IAdd.Speculate = 1'b1;
+            // Ready = (ReadySig & ~IAdd.Error) | Delay;
+            // if IAdd.Error & Delay set Delay=0
+        end
         else if (ALUPort.lopShift == 1'b1)
         begin
-            assign Ibs.Shifter.Din = DataPort.rs1;
-            assign Ibs.Shifter.Shift = DataPort.rs2[$clog2(XLEN):0];
-            assign Ibs.Shifter.opArithmetic = ALUPort.opArithmetic;
-            assign Ibs.Shifter.opRightShift = ALUPort.opRightShift;
-            assign ALUPort.rd = Ibs.Shifter.Dout;
+            Ibs.Shifter.Din = DataPort.rs1;
+            Ibs.Shifter.Shift = DataPort.rs2[$clog2(XLEN):0];
+            Ibs.Shifter.opArithmetic = ALUPort.opArithmetic;
+            Ibs.Shifter.opRightShift = ALUPort.opRightShift;
+            ALUPort.rd = Ibs.Shifter.Dout;
         end
         // FIXME:  Comparator
         // There are basic gates
         else if (ALUPort.lopAND == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 & DataPort.rs2;
+            ALUPort.rd = DataPort.rs1 & DataPort.rs2;
         else if (ALUPort.lopOR == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 | DataPort.rs2;
+            ALUPort.rd = DataPort.rs1 | DataPort.rs2;
         else if (ALUPort.lopXOR == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 ^ DataPort.rs2;
+            ALUPort.rd = DataPort.rs1 ^ DataPort.rs2;
         // FIXME:  MUL, DIV
     end;
 endmodule

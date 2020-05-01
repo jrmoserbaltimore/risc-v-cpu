@@ -112,11 +112,4 @@ module TALUTests
         Ibs.Shifter.opArithmetic = IALU.DecodedIn.opArithmetic;
         Ibs.Shifter.opRightShift = IALU.DecodedIn.opRightShift;
     end
-    
-    
-//    always_ff@(posedge Clk)
-//    begin
-//
-//    end
-    
 endmodule
