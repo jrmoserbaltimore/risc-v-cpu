@@ -22,12 +22,36 @@
 // 
 // The ALU pointedly does not complain about invalid input.  Don't send invalid input.
 //
-// ALU operations like MUL and DIV may use the ALU's other resources, such as bit
-// shifts and masks, addition, or even the multiplier.  MUL and DIV consume adder
-// resources for several cycles; additional ALUs are valuable in OOE and superscalar
-// applications. 
+// MUL may use the ALU's other resources, including bi shifters and the adder.  MUL
+// ties up the ALU for several cycles.
 //////////////////////////////////////////////////////////////////////////////////
 `default_nettype uwire
+
+interface IALU
+#(
+    parameter XLEN = 32
+);
+    logic [XLEN-1:0] A, B;
+    logic Equal, LessThan, LessThanUnsigned;
+    
+    modport Comparator
+    (
+        output A,
+        output B,
+        input Equal,
+        input LessThan,
+        input LessThanUnsigned
+    );
+    
+    modport ALU
+    (
+        input A,
+        input B,
+        output Equal,
+        output LessThan,
+        output LessThanUnsigned
+    );
+endinterface
 
 module BasicALU
 #(
@@ -36,11 +60,27 @@ module BasicALU
 (
     input logic Clk,
     IPipelineData.LoadedIn DataPort,
-    IPipelineData.ALU ALUPort
+    IPipelineData.ALU ALUPort,
+    IALU.ALU CmpPort
 );
 
     IBarrelShifter #(XLEN) Ibs();
     BarrelShifter #(XLEN) bs(.Shifter(Ibs.Shifter));
+
+    // one-cycle operations
+    always_comb
+    begin
+        CmpPort.Equal = (CmpPort.A == CmpPort.B) ? 1'b1 : 1'b0;
+        CmpPort.LessThan = (signed'(CmpPort.A) < signed'(CmpPort.B)) ? 1'b1 : 1'b0;
+        CmpPort.LessThanUnsigned = (unsigned'(CmpPort.A) < unsigned'(CmpPort.B)) ? 1'b1 : 1'b0;
+
+        if (ALUPort.lopAND == 1'b1)
+            assign ALUPort.rd = DataPort.rs1 & DataPort.rs2;
+        else if (ALUPort.lopOR == 1'b1)
+            assign ALUPort.rd = DataPort.rs1 | DataPort.rs2;
+        else if (ALUPort.lopXOR == 1'b1)
+            assign ALUPort.rd = DataPort.rs1 ^ DataPort.rs2;
+    end
 
     always_ff@(posedge Clk)
     begin
@@ -56,24 +96,53 @@ module BasicALU
             assign Ibs.Shifter.opRightShift = ALUPort.opRightShift;
             assign ALUPort.rd = Ibs.Shifter.Dout;
         end
-        // FIXME:  Shift, Comparator
+        // FIXME:  MUL
+
+    end;
+endmodule
+
+// Supports only add, sub, cmp, and shift, plus bitmasks because they're cheap
+// Basically omits MUL.
+module SubsetALU
+#(
+    XLEN = 32
+)
+(
+    input logic Clk,
+    IPipelineData.LoadedIn DataPort,
+    IPipelineData.ALU ALUPort,
+    IALU.ALU CmpPort
+);
+
+    IBarrelShifter #(XLEN) Ibs();
+    BarrelShifter #(XLEN) bs(.Shifter(Ibs.Shifter));
+
+    // one-cycle operations
+    always_comb
+    begin
+        CmpPort.Equal = (CmpPort.A == CmpPort.B) ? 1'b1 : 1'b0;
+        CmpPort.LessThan = (signed'(CmpPort.A) < signed'(CmpPort.B)) ? 1'b1 : 1'b0;
+        CmpPort.LessThanUnsigned = (unsigned'(CmpPort.A) < unsigned'(CmpPort.B)) ? 1'b1 : 1'b0;
+        
+        assign Ibs.Shifter.Din = DataPort.rs1;
+        assign Ibs.Shifter.Shift = DataPort.rs2[$clog2(XLEN):0];
+        assign Ibs.Shifter.opArithmetic = ALUPort.opArithmetic;
+        assign Ibs.Shifter.opRightShift = ALUPort.opRightShift;
+
+        if (ALUPort.lopAdd == 1'b1)
+            assign ALUPort.rd = DataPort.rs1 + (ALUPort.opArithmetic == 1'b0) ? DataPort.rs2 : - DataPort.rs2;
         else if (ALUPort.lopAND == 1'b1)
             assign ALUPort.rd = DataPort.rs1 & DataPort.rs2;
         else if (ALUPort.lopOR == 1'b1)
             assign ALUPort.rd = DataPort.rs1 | DataPort.rs2;
         else if (ALUPort.lopXOR == 1'b1)
             assign ALUPort.rd = DataPort.rs1 ^ DataPort.rs2;
-        // FIXME:  MUL, DIV
-        // paravartya or quick-div
-        
-        // Divider obtains and caches the remainder and product to
-        // catch the RISC-V M specified sequence:
-        //   DIV[U] rdq, rs1, rs2
-        //   REM[U] rdq, rs1, rs2
-        // This sequence is fused together into a single divide.
-        //
-        // Various divider components are possible, e.g. Paravartya.
-        // The ALU requires a divider implementation, as the DSP
-        // does not provide one.
+        else if (ALUPort.lopShift == 1'b1)
+            assign ALUPort.rd = Ibs.Shifter.Dout;
+    end
+
+    always_ff@(posedge Clk)
+    begin
+
     end;
 endmodule

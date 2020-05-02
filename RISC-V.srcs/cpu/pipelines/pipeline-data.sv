@@ -34,10 +34,25 @@ interface IPipelineData
     // Extra data from Fetch, if wide bus.  Append to insn.
     logic [FetchSize-32:0] FetchData = '0;
     
+    // virtually extend misa on access: [XLEN-1:XLEN-2] is [31:30]
     logic[31:0] misa = '0;
     logic[XLEN-1:0] mstatus = '0;
     bit[1:0] ring = '0;
 
+    let sxl = mstatus[35:34];
+    let uxl = mstatus[33:32];
+    let mxl = misa[31:30];
+    logic[1:0] xlen;
+    
+    always_comb
+    begin
+        case (ring)
+            0: assign xlen = uxl;
+            1: assign xlen = sxl;
+            3: assign xlen = mxl;
+        endcase
+    end
+    
     logic[XLEN-1:0] rs1 = '0;
     logic[XLEN-1:0] rs2 = '0;
     logic[XLEN-1:0] rd = '0;
@@ -167,8 +182,9 @@ interface IPipelineData
         output insn,
         output mstatus,
         output ring,
+        output xlen,
         output pc,
-        
+
         output misaA,
         output misaB,
         output misaC,
@@ -205,8 +221,9 @@ interface IPipelineData
         input insn,
         input mstatus,
         input ring,
+        input xlen,
         input pc,
-        
+
         input misaA,
         input misaB,
         input misaC,
