@@ -31,8 +31,7 @@ module FullALU
 )
 (
     input logic Clk,
-    IPipelineData.LoadedIn DataPort,
-    IPipelineData.ALU ALUPort
+    IALU.ALU ALUPort
 );
 
     IBarrelShifter #(XLEN) Ibs();
@@ -45,8 +44,8 @@ module FullALU
     begin
         if (ALUPort.lopAdd == 1'b1)
         begin
-            IAdd.A = DataPort.rs1;
-            IAdd.B = DataPort.rs2;
+            IAdd.A = ALUPort.rs1;
+            IAdd.B = ALUPort.rs2;
             IAdd.Sub = ALUPort.opArithmetic;
             IAdd.Speculate = 1'b1;
             // Ready = (ReadySig & ~IAdd.Error) | Delay;
@@ -54,8 +53,8 @@ module FullALU
         end
         else if (ALUPort.lopShift == 1'b1)
         begin
-            Ibs.Shifter.Din = DataPort.rs1;
-            Ibs.Shifter.Shift = DataPort.rs2[$clog2(XLEN):0];
+            Ibs.Shifter.Din = ALUPort.rs1;
+            Ibs.Shifter.Shift = ALUPort.rs2[$clog2(XLEN):0];
             Ibs.Shifter.opArithmetic = ALUPort.opArithmetic;
             Ibs.Shifter.opRightShift = ALUPort.opRightShift;
             ALUPort.rd = Ibs.Shifter.Dout;
@@ -63,11 +62,11 @@ module FullALU
         // FIXME:  Comparator
         // There are basic gates
         else if (ALUPort.lopAND == 1'b1)
-            ALUPort.rd = DataPort.rs1 & DataPort.rs2;
+            ALUPort.rd = ALUPort.rs1 & ALUPort.rs2;
         else if (ALUPort.lopOR == 1'b1)
-            ALUPort.rd = DataPort.rs1 | DataPort.rs2;
+            ALUPort.rd = ALUPort.rs1 | ALUPort.rs2;
         else if (ALUPort.lopXOR == 1'b1)
-            ALUPort.rd = DataPort.rs1 ^ DataPort.rs2;
+            ALUPort.rd = ALUPort.rs1 ^ ALUPort.rs2;
         // FIXME:  MUL, DIV
     end;
 endmodule

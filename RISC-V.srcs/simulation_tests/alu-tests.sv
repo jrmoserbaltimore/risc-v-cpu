@@ -32,84 +32,84 @@ module TALUTests
     IBarrelShifter #(8) Ibs();
     BarrelShifter #(8) bs(.Shifter(Ibs.Shifter));
 
-    IPipelineData #(8) IALU();
-    BasicALU #(8) ALU(.Clk(Clk), .DataPort(IALU.LoadedIn), .ALUPort(IALU.ALU));
-    DSP48ALU #(8) DSPALU(.Clk(Clk), .DataPort(IALU.LoadedIn), .ALUPort(IALU.ALU));
-    FullALU #(8) FullALU(.Clk(Clk), .DataPort(IALU.LoadedIn), .ALUPort(IALU.ALU));
+    IALU #(8) ALUPort();
+    BasicALU #(8) ALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
+    DSP48ALU #(8) DSPALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
+    FullALU #(8) FullALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
     
     initial
     begin
         Clk = 1'b0;
-        IALU.LoadedOut.rs1 = '0;
-        IALU.LoadedOut.rs2 = '0;
+        ALUPort.Client.rs1 = '0;
+        ALUPort.Client.rs2 = '0;
     end
     always #ClkDelay Clk = ~Clk;
 
     always_ff@(posedge Clk)
     begin
-        if (IALU.DecodedIn.lopAdd == 1'b1)
+        if (ALUPort.ALU.lopAdd == 1'b1)
         begin
-            if (IALU.DecodedIn.opArithmetic == 1'b0)
+            if (ALUPort.ALU.opArithmetic == 1'b0)
             begin
                 // Add -> Sub
-                IALU.DecodedOut.opArithmetic = 1'b1;
+                ALUPort.Client.opArithmetic = 1'b1;
             end
             else
             begin
                 // Sub -> Shift Left Logical
-                IALU.DecodedOut.opArithmetic = 1'b0;
-                IALU.DecodedOut.lopAdd = 1'b0;
-                IALU.DecodedOut.lopShift = 1'b1;
+                ALUPort.Client.opArithmetic = 1'b0;
+                ALUPort.Client.lopAdd = 1'b0;
+                ALUPort.Client.lopShift = 1'b1;
             end
         end
-        else if (IALU.DecodedOut.lopShift == 1'b1)
+        else if (ALUPort.ALU.lopShift == 1'b1)
         begin
-            if (IALU.DecodedOut.opRightShift == 1'b0)
+            if (ALUPort.ALU.opRightShift == 1'b0)
             begin
                 // SLL -> Shift Right Logical
-                IALU.DecodedOut.opRightShift = 1'b1;
+                ALUPort.Client.opRightShift = 1'b1;
             end
-            else if (IALU.DecodedOut.opArithmetic == 1'b0)
+            else if (ALUPort.ALU.opArithmetic == 1'b0)
             begin
                 // SRL -> Shift Right Arithmetic 
-                IALU.DecodedOut.opArithmetic = 1'b1;
+                ALUPort.Client.opArithmetic = 1'b1;
             end
             else
             begin
                 // AND
-                IALU.DecodedOut.opArithmetic = 1'b0;
-                IALU.DecodedOut.opArithmetic = 1'b0;
-                IALU.DecodedOut.lopShift = 1'b0;
-                IALU.DecodedOut.lopAND = 1'b1;
+                ALUPort.Client.opArithmetic = 1'b0;
+                ALUPort.Client.opArithmetic = 1'b0;
+                ALUPort.Client.lopShift = 1'b0;
+                ALUPort.Client.lopAND = 1'b1;
             end
         end
-        else if (IALU.DecodedOut.lopAND == 1'b1)
+        else if (ALUPort.ALU.lopAND == 1'b1)
         begin
-            IALU.DecodedOut.lopAND = 1'b0;
-            IALU.DecodedOut.lopOR = 1'b1;
+            ALUPort.Client.lopAND = 1'b0;
+            ALUPort.Client.lopOR = 1'b1;
         end
-        else if (IALU.DecodedOut.lopOR == 1'b1)
+        else if (ALUPort.ALU.lopOR == 1'b1)
         begin
-            IALU.DecodedOut.lopOR = 1'b0;
-            IALU.DecodedOut.lopXOR = 1'b1;
+            ALUPort.Client.lopOR = 1'b0;
+            ALUPort.Client.lopXOR = 1'b1;
         end
         else
         begin
             // By default, start with Add
-            IALU.DecodedOut.lopAdd = 1'b1;
+            ALUPort.Client.lopAdd = 1'b1;
             // Clear everything else
-            IALU.DecodedOut.opArithmetic = 1'b0;
-            IALU.DecodedOut.opRightShift = 1'b0;
-            IALU.DecodedOut.lopShift = 1'b0;
-            IALU.DecodedOut.lopAND = 1'b0;
-            IALU.DecodedOut.lopOR = 1'b0;
+            ALUPort.Client.opArithmetic = 1'b0;
+            ALUPort.Client.opRightShift = 1'b0;
+            ALUPort.Client.lopShift = 1'b0;
+            ALUPort.Client.lopAND = 1'b0;
+            ALUPort.Client.lopOR = 1'b0;
         end
-        IALU.LoadedOut.rs1 = 8'b10110101;
-        IALU.LoadedOut.rs2 = 8'b00000011;
+        ALUPort.Client.rs1 = 8'b10110101;
+        ALUPort.Client.rs2 = 8'b00000011;
         
-        Ibs.Shifter.Din = IALU.LoadedIn.rs1; //8'b10110101;
-        Ibs.Shifter.Shift = IALU.LoadedIn.rs2[$clog2(8):0]; //4'b0011;
-        Ibs.Shifter.opArithmetic = IALU.DecodedIn.opArithmetic;
-        Ibs.Shifter.opRightShift = IALU.DecodedIn.opRightShift;
+        Ibs.Shifter.Din = ALUPort.ALU.rs1; //8'b10110101;
+        Ibs.Shifter.Shift = ALUPort.ALU.rs2[$clog2(8):0]; //4'b0011;
+        Ibs.Shifter.opArithmetic = ALUPort.ALU.opArithmetic;
+        Ibs.Shifter.opRightShift = ALUPort.ALU.opRightShift;
     end
 endmodule

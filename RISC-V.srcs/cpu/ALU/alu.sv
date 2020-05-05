@@ -31,11 +31,75 @@ interface IALU
 #(
     parameter XLEN = 32
 );
-    logic [XLEN-1:0] A, B;
+    logic [XLEN-1:0] A, B, rs1, rs2, rd;
     logic Equal, LessThan, LessThanUnsigned;
     
-    modport Comparator
+    // ----------------------
+    // -- Logic Operations --
+    // ----------------------
+    // What operation
+
+    // ALU ops
+    // add, sub: ADD, ADDI, SUB; 64 ADDW, ADDIW, SUBW
+    logic lopAdd = '0;
+    // shift: SLL, SLLI, SRL, SRLI, SRA; 64 SLLIW, SRRIW, SRAIW
+    logic lopShift = '0;
+    // Comparator (SLT, SLTU, SLTI, SLTIU)
+    logic lopCmp = '0;
+    // AND: AND, ANDI
+    logic lopAND = '0;
+    // OR: OR, ORI
+    logic lopOR = '0;
+    // XOR: XOR, XORI
+    logic lopXOR = '0;
+    
+    // Extension: M
+    // Multiplier: MUL, MULH, MULHSU, MULHU; 64 MULW 
+    logic lopMUL = '0;
+
+    // --------------------
+    // -- Operation Flags--
+    // --------------------
+    // Word sizes: Byte, Half, Word, Double
+    logic opB = '0;
+    logic opH = '0;
+    logic opW = '0;
+    logic opD = '0;
+    // Unsigned
+    logic opUnsigned = '0;
+    // Arithmetic is also Adder-Subtractor subtract
+    logic opArithmetic = '0;
+    logic opRightShift = '0;
+    // MULHSU and DIV Remainder REM
+    logic opHSU = '0;
+    logic opRemainder = '0;
+    
+    modport Client
     (
+        // Computations
+        output rs1,
+        output rs2,
+
+        output lopAdd,
+        output lopShift,
+        output lopCmp,
+        output lopAND,
+        output lopOR,
+        output lopXOR,
+        output lopMUL,
+
+        output opB,
+        output opH,
+        output opW,
+        output opD,
+        output opUnsigned,
+        output opArithmetic,
+        output opRightShift,
+        output opHSU,
+        output opRemainder,
+
+        input  rd,
+        // Comparator
         output A,
         output B,
         input Equal,
@@ -45,6 +109,29 @@ interface IALU
     
     modport ALU
     (
+        input rs1,
+        input rs2,
+
+        input lopAdd,
+        input lopShift,
+        input lopCmp,
+        input lopAND,
+        input lopOR,
+        input lopXOR,
+        input lopMUL,
+
+        input opB,
+        input opH,
+        input opW,
+        input opD,
+        input opUnsigned,
+        input opArithmetic,
+        input opRightShift,
+        input opHSU,
+        input opRemainder,
+
+        output rd,
+
         input A,
         input B,
         output Equal,
@@ -59,9 +146,7 @@ module BasicALU
 )
 (
     input logic Clk,
-    IPipelineData.LoadedIn DataPort,
-    IPipelineData.ALU ALUPort,
-    IALU.ALU CmpPort
+    IALU.ALU ALUPort
 );
 
     IBarrelShifter #(XLEN) Ibs();
@@ -70,28 +155,28 @@ module BasicALU
     // one-cycle operations
     always_comb
     begin
-        CmpPort.Equal = (CmpPort.A == CmpPort.B) ? 1'b1 : 1'b0;
-        CmpPort.LessThan = (signed'(CmpPort.A) < signed'(CmpPort.B)) ? 1'b1 : 1'b0;
-        CmpPort.LessThanUnsigned = (unsigned'(CmpPort.A) < unsigned'(CmpPort.B)) ? 1'b1 : 1'b0;
+        ALUPort.Equal = (ALUPort.A == ALUPort.B) ? 1'b1 : 1'b0;
+        ALUPort.LessThan = (signed'(ALUPort.A) < signed'(ALUPort.B)) ? 1'b1 : 1'b0;
+        ALUPort.LessThanUnsigned = (unsigned'(ALUPort.A) < unsigned'(ALUPort.B)) ? 1'b1 : 1'b0;
 
         if (ALUPort.lopAND == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 & DataPort.rs2;
+            assign ALUPort.rd = ALUPort.rs1 & ALUPort.rs2;
         else if (ALUPort.lopOR == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 | DataPort.rs2;
+            assign ALUPort.rd = ALUPort.rs1 | ALUPort.rs2;
         else if (ALUPort.lopXOR == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 ^ DataPort.rs2;
+            assign ALUPort.rd = ALUPort.rs1 ^ ALUPort.rs2;
     end
 
     always_ff@(posedge Clk)
     begin
         if (ALUPort.lopAdd == 1'b1 && ALUPort.opArithmetic == 1'b0)
-            assign ALUPort.rd = DataPort.rs1 + DataPort.rs2;
+            assign ALUPort.rd = ALUPort.rs1 + ALUPort.rs2;
         else if (ALUPort.lopAdd == 1'b1 && ALUPort.opArithmetic == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 - DataPort.rs2;
+            assign ALUPort.rd = ALUPort.rs1 - ALUPort.rs2;
         else if (ALUPort.lopShift == 1'b1)
         begin
-            assign Ibs.Shifter.Din = DataPort.rs1;
-            assign Ibs.Shifter.Shift = DataPort.rs2[$clog2(XLEN):0];
+            assign Ibs.Shifter.Din = ALUPort.rs1;
+            assign Ibs.Shifter.Shift = ALUPort.rs2[$clog2(XLEN):0];
             assign Ibs.Shifter.opArithmetic = ALUPort.opArithmetic;
             assign Ibs.Shifter.opRightShift = ALUPort.opRightShift;
             assign ALUPort.rd = Ibs.Shifter.Dout;
@@ -109,9 +194,7 @@ module SubsetALU
 )
 (
     input logic Clk,
-    IPipelineData.LoadedIn DataPort,
-    IPipelineData.ALU ALUPort,
-    IALU.ALU CmpPort
+    IALU.ALU ALUPort
 );
 
     IBarrelShifter #(XLEN) Ibs();
@@ -120,23 +203,23 @@ module SubsetALU
     // one-cycle operations
     always_comb
     begin
-        CmpPort.Equal = (CmpPort.A == CmpPort.B) ? 1'b1 : 1'b0;
-        CmpPort.LessThan = (signed'(CmpPort.A) < signed'(CmpPort.B)) ? 1'b1 : 1'b0;
-        CmpPort.LessThanUnsigned = (unsigned'(CmpPort.A) < unsigned'(CmpPort.B)) ? 1'b1 : 1'b0;
+        ALUPort.Equal = (ALUPort.A == ALUPort.B) ? 1'b1 : 1'b0;
+        ALUPort.LessThan = (signed'(ALUPort.A) < signed'(ALUPort.B)) ? 1'b1 : 1'b0;
+        ALUPort.LessThanUnsigned = (unsigned'(ALUPort.A) < unsigned'(ALUPort.B)) ? 1'b1 : 1'b0;
         
-        assign Ibs.Shifter.Din = DataPort.rs1;
-        assign Ibs.Shifter.Shift = DataPort.rs2[$clog2(XLEN):0];
+        assign Ibs.Shifter.Din = ALUPort.rs1;
+        assign Ibs.Shifter.Shift = ALUPort.rs2[$clog2(XLEN):0];
         assign Ibs.Shifter.opArithmetic = ALUPort.opArithmetic;
         assign Ibs.Shifter.opRightShift = ALUPort.opRightShift;
 
         if (ALUPort.lopAdd == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 + (ALUPort.opArithmetic == 1'b0) ? DataPort.rs2 : - DataPort.rs2;
+            assign ALUPort.rd = ALUPort.rs1 + (ALUPort.opArithmetic == 1'b0) ? ALUPort.rs2 : - ALUPort.rs2;
         else if (ALUPort.lopAND == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 & DataPort.rs2;
+            assign ALUPort.rd = ALUPort.rs1 & ALUPort.rs2;
         else if (ALUPort.lopOR == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 | DataPort.rs2;
+            assign ALUPort.rd = ALUPort.rs1 | ALUPort.rs2;
         else if (ALUPort.lopXOR == 1'b1)
-            assign ALUPort.rd = DataPort.rs1 ^ DataPort.rs2;
+            assign ALUPort.rd = ALUPort.rs1 ^ ALUPort.rs2;
         else if (ALUPort.lopShift == 1'b1)
             assign ALUPort.rd = Ibs.Shifter.Dout;
     end

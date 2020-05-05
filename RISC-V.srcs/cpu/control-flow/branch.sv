@@ -25,3 +25,54 @@
 // branching.
 //////////////////////////////////////////////////////////////////////////////////
 `default_nettype uwire
+
+module ControlBranch
+#(
+    XLEN = 32
+)
+(
+    IPipelineData.ContextIn ContextIn,
+    IPipelineData.LoadedOut DataPort,
+    IALU.Client ALU,
+    output logic Sel
+);
+
+        module Branch
+        #(
+            XLEN = 32
+        )
+        (
+            IPipelineData.ContextIn ContextIn,
+            IPipelineData.LoadedOut DataPort,
+            IALU.Client ALU,
+            output logic Sel
+        );
+        let funct3 = ContextIn.insn[14:12];
+        // Have to add a 0 onto the end because the offset is in half-words (2 bytes)
+        let imm = {
+                   {(XLEN-12){ContextIn.insn[31]}},
+                   ContextIn.insn[7],
+                   ContextIn.insn[30:25],
+                   ContextIn.insn[11:8],
+                   1'b0
+                  };
+        always_comb
+        begin
+            // add the branch offset to the immediate.
+            // PC is always aligned to 16 bits, so we don't pass the LSB, just like RISC-V
+            // excludes the LSB from the branchp JAL, and JALR immediates
+            assign ALU.rs1 = {ContextIn.pc, 1'b0};
+            assign ALU.rs2 = imm;
+            assign ALU.lopAd = 1'b1;
+            assign ALU.A = DataPort.rs1;
+            assign ALU.B = DataPort.rs2;
+            assign Sel = (
+                ~ALU.Equals == funct3[2] ^ funct3[0]  // BEQ, BNE, BGEU optimization
+                || (ALU.LessThan == 1'b1 && funct3 == 3'b100) // BLT
+                || (ALU.LessThanUnsigned == 3'b110) // BLTU
+                || (ALU.LessThan == 1'b0 && funct3 == 3'b101) // BGE
+                || (ALU.LessThanUnsigned == 1'b0 && funct3 == 3'b111) // BGEU
+               ) ? 1'b1 : 1'b0;
+        end
+    endmodule
+endmodule

@@ -335,32 +335,4 @@ interface IPipelineData
         input rs1,
         input rs2
     );
-
-    // ALU port
-    modport ALU
-    (
-        input insn,
-
-        input lopAdd,
-        input lopShift,
-        input lopCmp,
-        input lopAND,
-        input lopOR,
-        input lopXOR,
-        input lopMUL,
-        input lopDIV,
-        
-        input opB,
-        input opH,
-        input opW,
-        input opD,
-        input opUnsigned,
-        input opArithmetic,
-        input opRightShift,
-        input opHSU,
-        input opRemainder,
-    
-        output rd,
-        output Ready
-    );    
 endinterface
