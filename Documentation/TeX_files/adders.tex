@@ -1,0 +1,26 @@
+\chapter{Adders}
+
+Kerberos provides several adder implementations, including a basic inferred adder.
+
+\section{Speculative Adders}
+
+Kerberes provides a speculative Han-Carlson adder, a parallel prefix adder with an enhancement described by Katyayani and many others.  Speculative parallel prefix adders typically skip the last Kogge-Stone row of a hybrid adder.  This row propagates a carry half the entire bit width of the adder, not only adding an extra layer but creating demanding routing.
+
+Parallel prefix adders forward carry bits by stages, with the current propagated and generated bits forwarding to the next stage.  For example, a 16-bit Han-Carlson passes its bit zero carry directly to bits 1, 3, 7, 15, and 2 in successive stages, in that order.  This propagation functions by specific rules:
+
+\begin{itemize}
+    \item The stage produces a generated carry from the current bit if the previous stage produced a generated carry \textit{or} if both the previous stage produced a propagated carry and the bit propagating its carry to the current bit in this stage produced a generated carry in the previous stage.
+    \item The stage produces a propagated carry from the current bit if the previous stage produced a propagated carry \textit{and} the bit propagating its carry to the current bit in this stage produced a propagated carry in the previous stage.
+\end{itemize}
+
+Together, this means a bit permanently generates a carry in all stages after it generates its first \textit{and} a bit permanently propagates no carry in any stage after it propagates no carry.  No matter how little information you have, the state of generating and not propagating a carry is permanent.  Notably, any bit which is 1 in both addends generates a carry and propagates no carry immediately and is unaffected by all carry propagation.
+
+The penultimate row—the last Kogge-Stone stage—directly propagates any generated or propagated carry from bit 1 to bit 9, from bit 3 to bit 11, from bit 5 to bit 13, and from bit 7 to bit 15.  By this time, ever other propagation has occurred, creating an enormous likelihood of no state change in this stage.  A high-speed detection circuit operates in parallel with the final row, the final sum computation, and the parallel computation of the sum \textit{with} the omitted stage.  This introduces a small amount of delay, and in total the adder can finish in $\frac{4}{5}$ the time, allowing a faster CPU clock speed if it happens to be the slowest thing in the CPU.  If it detects error, it signals that addition is incomplete, and provides the correct sum in the next cycle.
+
+It is possible to cut further rows away; the error rate rapidly increases, but may be worthwhile on RV128I where the adder has 15\% more delay than a 64-bit adder.  Kumari, Srinivas, and Aravind find a 64-bit non-speculative Han-Carlson adder slightly-faster than the inferred adder using the '+' operator in Xilinx XST.
+
+\section{Carry-Select Adders}
+
+Carry-select adders implement two sets of adders, each for smaller operations, and each assuming a carry or no carry.  A speculative adder is a complex type of carry-select adder duplicating a small part of the adder.
+
+Carry-select adders avoid long propagation, such as with ripple-carry adders.  Optimally, a carry-select adder starts with a small adder, then adds larger and larger adders:  the carry bit switches on the carry bit from the next adder and switches the output, and that cascades and so gives each successive adder slightly more time to compute its result, thus allows each stage to be slightly larger and compute more bits.

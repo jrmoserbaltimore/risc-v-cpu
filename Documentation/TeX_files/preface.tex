@@ -1,0 +1,8 @@
+\chapter*{Preface}
+This book documents the design of the Kerberos RISC-V core.  Kerberos implements RV32I and RV64I, plus the multiply and divide extension, atomics, single- and double-precision floating point operations, 16-bit compressed instructions, Zicsr, and Zifenci.  Together, this is called RV64IMAFDCZicsr\_Zifencei, or RV32-, etc..  Kerberos also implements SMT, runahead, and out-of-order execution, along with the Supervisor and User modes.
+
+I created Kerberos largely to understand CPU design.  This lead to reading many research papers, learning VHDL and SystemVerilog, and taking lessons from projects such as ZipCPU and the Taiga RISC-V core.  The blog for ZipCPU provided lots of information, but the developers of the Taiga CPU only provided a research paper with not much in-depth detail, along with some follow-up writings.  I see this as a sizable defect, and so decided to document what I can of these things, and hopefully learn something along the way.
+
+Chapters in this book may be short, rather than combined simply for length.  What is topical is topical, and there's no sense in mashing a bunch of different topics together to make a chapter twelve pages long.
+
+I divided this book into three sections:  one reviewing prior work; a sizable section documenting Taiga RISC-V by Matthews and Shannon; and a section documenting the design of Kerberos.

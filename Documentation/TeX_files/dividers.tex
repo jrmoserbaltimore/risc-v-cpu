@@ -1,0 +1,15 @@
+\chapter{Dividers}
+Dividers use arithmetic facilities to perform integer division.  Dividers are complex and use algorithms based on repeat subtraction or multiplication.
+
+\section{Quick-Div}
+Matthews, Lu, Fang, and Shannon describe Quick-Div in "Rethinking Integer Divider Design for FPGA-Based Soft-Processors."  This divider can operate at 426MHz, keeping up with the Taiga RISC-V soft CPU at 373MHz.  The divider is variable-latency and can complete early, freeing up the resource for further operations.
+
+Quick-Div uses a Count Leading Zero (CLZ) circuit to shift the divisor before entering the division cycle.  The naive implementation has too much delay, and so they developed an optimized version.  From there, Quick-Div essentially implements partial subtraction.  Besides operating at a relatively high clock rate, it tends to produce more instructions per clock (IPC) than typical low-radix implementations, and use much less area than high-radix implementations.
+
+\section{Paravartya}
+
+jain, Pancholi, Garg, and Saini describe two binary dividers in "Binary Division Algorithm and High Speed Deconvolution Algorithm." The actual division computation requires one round per dividend bit minus the number of divisor bits, and then again minus one.
+
+A Paravartya implementation can use Quick-Div's CLZ to left-align the divisor and dividend.  Its worst case is division by three:  division by one ultimately comes down to no operation and a quotient with as many digits as the dividend, while division by any figure containing a single 1 bit—a power of two—produces a zero operand of some length, but ultimately of no effect, with the quotient separated from the remainder by a shift with overflow.
+
+The largest complication with Paravartya is the final barrel shift:  the dividend begins right-aligned, and the quotient and remainder come out as a single chunk.  A shift right by the number of digits in the divisor produces the quotient; an AND produces the remainder.  The quotient is easy enough; the remainder requires barrel-shifting -1 right to mask the result.
