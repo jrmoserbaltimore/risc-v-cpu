@@ -8,6 +8,21 @@
 *.pdf
 *.synctex.gz
 *.toc
+# Documents
+*\#
+*.swp
+*~
+*.pdf
+# *.tex
+*.sav
+*.bak
+*.aux
+*.bbl
+*.blg
+*.log
+*.gz
+*.bcf
+*.xml
 #########################################################################################
 ##  Project    : Collect of various scripts for working with EDA-tools (ASIC/FPGA/etc) ##
 ##  Link       : https://github.com/iDoka/eda-scripts                                  ##

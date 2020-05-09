@@ -1,5 +1,5 @@
 // vim: sw=4 ts=4 et
-`timescale 1ns / 1ps
+`timescale 1ns / 100ps
 //////////////////////////////////////////////////////////////////////////////////
 // Company: 
 // Engineer: John Moser
@@ -36,7 +36,22 @@ module TALUTests
     BasicALU #(8) ALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
     DSP48ALU #(8) DSPALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
     FullALU #(8) FullALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
-    
+
+    // Pipeline tests.  Direct manipulation of the handshake.
+    logic [31:0] PTA = '0;
+    logic [31:0] PTB = '0;
+    logic [31:0] PTS;
+    IBufferedHandshake IBHR(); // We're the receiver here
+    IBufferedHandshake IBHS(); // We're the sender here
+    ExampleAdditionHandshake EAD(.Clk(Clk), .A(PTA), .B(PTB), .S(PTS), .Receiver(IBHS.Receiver), .Sender(IBHR.Sender));
+    // Setup
+
+    logic HSStrobe = '0;
+    assign IBHS.Sender.Strobe = HSStrobe;
+
+    logic sBusy = '0;
+    assign IBHR.Receiver.Busy = sBusy;
+
     initial
     begin
         Clk = 1'b0;
@@ -47,6 +62,9 @@ module TALUTests
 
     always_ff@(posedge Clk)
     begin
+        PTA <= PTA + 1;
+        HSStrobe <= ~HSStrobe && ~IBHS.Sender.Busy;
+        
         if (ALUPort.ALU.lopAdd == 1'b1)
         begin
             if (ALUPort.ALU.opArithmetic == 1'b0)
