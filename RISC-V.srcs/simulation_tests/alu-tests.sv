@@ -41,16 +41,24 @@ module TALUTests
     logic [31:0] PTA = '0;
     logic [31:0] PTB = '0;
     logic [31:0] PTS;
-    IBufferedHandshake IBHR(); // We're the receiver here
-    IBufferedHandshake IBHS(); // We're the sender here
-    ExampleAdditionHandshake EAD(.Clk(Clk), .A(PTA), .B(PTB), .S(PTS), .Receiver(IBHS.Receiver), .Sender(IBHR.Sender));
+
+    // Input (ISB.Sender) -> (ISB.Receiver) SBC  
+    ISkidBuffer #(.BufferSize($size(PTA) + $size(PTB))) ISB();
+    
+    SkidBuffer #(.BufferSize($size(PTA) + $size(PTB)))
+            SBC(.Clk(Clk), .Receiver(ISB.Receiver), .Sender(ISB.Sender));
+
+    // ISB.Receiver Data -> Ar/Br    
+    assign ISB.Din = {PTA,PTB};
+    uwire [$size(PTA)-1:0] Ar = ISB.Receiver.Din[($size(PTA) + $size(PTB))-1:$size(PTB)];
+    uwire [$size(PTB)-1:0] Br = ISB.Receiver.Din[$size(PTB)-1:0];
+
+
+    ExampleAdditionHandshake EAD(.Clk(Clk), .A(Ar), .B(Br), .S(PTS), .Receiver(ISB.Receiver));
     // Setup
 
     logic HSStrobe = '0;
-    assign IBHS.Sender.Strobe = HSStrobe;
-
-    logic sBusy = '0;
-    assign IBHR.Receiver.Busy = sBusy;
+    assign ISB.Sender.Strobe = HSStrobe;
 
     initial
     begin
@@ -62,8 +70,10 @@ module TALUTests
 
     always_ff@(posedge Clk)
     begin
-        PTA <= PTA + 1;
-        HSStrobe <= ~HSStrobe && ~IBHS.Sender.Busy;
+        if (!ISB.Sender.Busy)
+            PTA <= PTA + 1;
+        //HSStrobe <= ~HSStrobe && ~ISB.Sender.Busy;
+        HSStrobe <= 1'b1;
         
         if (ALUPort.ALU.lopAdd == 1'b1)
         begin
