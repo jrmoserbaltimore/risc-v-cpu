@@ -42,24 +42,27 @@ module TALUTests
     logic [31:0] PTB = '0;
     logic [31:0] PTS;
 
-    // Input (ISB.Sender) -> (ISB.Receiver) SBC  
+    // Input (ISB.Sender) -SBC-> (ISB.Receiver) EAD (ISBR.Sender) -SBCR-> (ISBR.Receiver)
     ISkidBuffer #(.BufferSize($size(PTA) + $size(PTB))) ISB();
     
     SkidBuffer #(.BufferSize($size(PTA) + $size(PTB)))
-            SBC(.Clk(Clk), .Receiver(ISB.Receiver), .Sender(ISB.Sender));
+            SBC(.Clk(Clk), .Receiver(ISB.Receiver), .Sender(ISB.Sender), .DataPort(ISB.DataPort));
 
     // ISB.Receiver Data -> Ar/Br    
     assign ISB.Din = {PTA,PTB};
-    uwire [$size(PTA)-1:0] Ar = ISB.Receiver.Din[($size(PTA) + $size(PTB))-1:$size(PTB)];
-    uwire [$size(PTB)-1:0] Br = ISB.Receiver.Din[$size(PTB)-1:0];
+    uwire [$size(PTA)-1:0] Ar = ISB.DataPort.rDin[($size(PTA) + $size(PTB))-1:$size(PTB)];
+    uwire [$size(PTB)-1:0] Br = ISB.DataPort.rDin[$size(PTB)-1:0];
 
-
-    ExampleAdditionHandshake EAD(.Clk(Clk), .A(Ar), .B(Br), .S(PTS), .Receiver(ISB.Receiver));
+    uwire EABusy;
+    ExampleAdditionHandshake EAD(.Clk(Clk), .A(Ar), .B(Br), .S(PTS), .Strobe(ISB.Sender.Strobe), .Busy(EABusy));
     // Setup
 
     logic HSStrobe = '0;
+    logic HSBusy = '0;
+    logic HSWait = '0;
+    logic [$size(PTA)-1:0] HSResult = '0;
     assign ISB.Sender.Strobe = HSStrobe;
-
+    assign ISB.Receiver.Busy = EABusy || HSBusy;
     initial
     begin
         Clk = 1'b0;
@@ -68,12 +71,31 @@ module TALUTests
     end
     always #ClkDelay Clk = ~Clk;
 
+    bit [2:0] delayPipe = 5;
     always_ff@(posedge Clk)
     begin
-        if (!ISB.Sender.Busy)
+        if (delayPipe == 0)
+        begin
+            // Increment and strobe immediately
             PTA <= PTA + 1;
-        //HSStrobe <= ~HSStrobe && ~ISB.Sender.Busy;
-        HSStrobe <= 1'b1;
+            HSStrobe <= 1'b1;
+            delayPipe = 5;
+            HSBusy <= 1'b1;
+        end
+        else if (HSStrobe == 1'b1)
+        begin
+             if (!ISB.Receiver.Busy)
+             begin
+                // Stop strobing only when not busy 
+                HSStrobe <= 1'b0;
+                HSBusy <= 1;
+            end
+        end
+        else if (delayPipe > 0)
+        begin
+            // Decrement only when this happens
+            delayPipe--;
+        end
         
         if (ALUPort.ALU.lopAdd == 1'b1)
         begin

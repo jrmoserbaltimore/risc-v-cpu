@@ -71,23 +71,27 @@ interface ISkidBuffer
     uwire sStrobe;
     uwire rBusy;
     logic rStrobe;
-
+    
     // Data processing and such
     uwire [BufferSize-1:0] Din;
     logic [BufferSize-1:0] rDin;
     
-    modport Sender
+    modport In
     (
-        input Din,
         input .Strobe(sStrobe),
         output .Busy(sBusy)
     );
     
-    modport Receiver
+    modport Out
     (
         input .Busy(rBusy),
-        output .Strobe(rStrobe),
-        output .Din(rDin)
+        output .Strobe(rStrobe)
+    );
+    
+    modport DataPort
+    (
+        input Din,
+        output rDin
     );
 endinterface
 
@@ -98,22 +102,21 @@ module SkidBuffer
 )
 (
     input uwire Clk,
-    ISkidBuffer.Receiver Receiver,
-    ISkidBuffer.Sender Sender
+    ISkidBuffer.In In,
+    ISkidBuffer.Out Out,
+    ISkidBuffer.DataPort DataPort
 );
-    logic Processing = 1'b0;
     // Is there register data?
     logic Rstore = 1'b0;
     logic [BufferSize-1:0] Rbuf;
 
     // We're not busy if there's nothing in the register.
-    assign Sender.Busy = Rstore;
-
+    assign In.Busy = Rstore;
 
     always @(posedge Clk)
     begin
         if (!Rstore)
-            Rbuf <= Sender.Din;
+            Rbuf <= DataPort.Din;
     end
     
     logic Reset = 1'b1;
@@ -122,41 +125,68 @@ module SkidBuffer
         if (Reset)
         begin
             Reset <= 1'b0;
-            Sender.Busy <= 1'b0;
+            //Out.Busy <= 1'b0;
             Rstore <= 1'b0;
         end
-        else if (!Receiver.Busy)
+        else if (!Out.Busy)
         begin
             // Next stage is not busy and is ready for data
             if (!Rstore)
             begin
                 // Bypass the buffer and strobe
-                Receiver.Din <= Sender.Din;
-                Receiver.Strobe <= Sender.Strobe;
+                DataPort.rDin <= DataPort.Din;
+                Out.Strobe <= In.Strobe;
             end
             else
             begin
                 // We have data in the buffer, flush to the client
-                Receiver.Din <= Rbuf;
-                Receiver.Strobe <= 1'b1;
+                DataPort.rDin <= Rbuf;
+                Out.Strobe <= 1'b1;
             end
             // Register is empty in either case.  If we're still busy we can bank new data.
             Rstore <= 1'b0;
         end
-        else if (!Receiver.Strobe)
+        else if (!In.Strobe)
         begin
             // No data payload at all:  Not busy and not sending
-            Receiver.Strobe <= Sender.Strobe;
+            Out.Strobe <= In.Strobe;
             Rstore <= 1'b0; // Redundant?
-            // Sender.Busy <= 1'b1; // This is always ~Rstore
+            // Out.Busy <= 1'b1; // This is always Rstore
 
         end
-        else if ((Sender.Strobe) && (!Sender.Busy))
+        else if (In.Strobe && !In.Busy)
         begin
             // We're busy, not signaling busy, and we received a strobe.
             // Bank to register.
-            Rstore <= Sender.Strobe && Receiver.Strobe;
+            Rstore <= Out.Strobe && In.Strobe;
         end
     end
+    
+    `ifdef FORMAL
+    // Formal verification
+    // I have no idea how to do this.
+    always @(posedge Clk)
+    begin
+        // Always passes
+        assert(In.Busy == Rstore);
+        
+        if (!In.Busy)
+        begin
+            // Flush: Out.Strobe <= 1, Din <= RBuf
+            // Idle: Out.Strobe <= In.Strobe, Din <= rDin
+            // FIXME:  Detect when we are in either state
+        end
+        // Currently Buf, either from Pass or Flush
+        assert(
+               Rstore ==
+               // It is only possible to transition to Buf if receiving strobe while busy.
+                  ($past(In.Strobe) && $past(Out.Busy))
+                  // It is possible to idle at Buf while Out.Busy remains; In.Strobe will go away
+                  // because we accepted data.
+               || ($past(Out.Busy) && $past(Rstore))
+              );
+              // Note above ( ($past(In.Strobe)||$past(Rstore)) && $past(Out.Busy) ) is equivalent
+            
+    end
+    `endif
 endmodule
-

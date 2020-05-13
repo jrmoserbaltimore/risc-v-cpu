@@ -5,14 +5,20 @@ module ExampleAdditionHandshake
     input logic [31:0] A,
     input logic [31:0] B,
     output logic [31:0] S,
-    ISkidBuffer.Receiver Receiver
+    ISkidBuffer.In PipeIn,
+    ISkidBuffer.Out PipeOut
 );
-    logic [1:0] Processing = 2'b0;
+    logic Processing = 1'b0;
+    logic DataReady = 1'b0;
     logic [$size(S)-1:0] OutS;
-    assign Receiver.Busy = (Processing == 0) ? 1'b0 : 1'b1;
+    bit [2:0] delay = '0;
+ 
+    // Busy if we're processing
+    assign Busy = Processing || (DataReady && PipeOut.Busy);
+
     always_ff @(posedge Clk)
     begin
-        if (Receiver.Strobe && !Receiver.Busy)
+        if (PipeIn.Strobe && !Processing)
         begin
             // If this is a multi-cycle instruction, it must set
             // dataReady <= 0 here.  If it is a potential multi-cycle instruction,
@@ -24,14 +30,22 @@ module ExampleAdditionHandshake
             // Signal that processing is complete.
             // This should have the same effect as just setting Sender.Strobe
             // and clearing Receiver.Busy in this block; we let BH handle that part
-            Processing <= 2;
+            Processing <= 1'b1;
+            delay <= 1; // 3 cycle operation
         end
         else if (Processing)
         begin
-            Processing <= Processing - 1;
-            S <= OutS;
+            // We're busy processing.  Reduce delay by 1; processing is 0 when delay is 0
+            if (delay > 0)
+            begin
+                delay--;
+            end
+            else
+            begin
+                // Send output
+                S <= OutS;
+                Processing <= 1'b0;
+             end
         end
-        // output and dataReady just sit until R is active again.  BH knows it hasn't
-        // requested anything and that it has strobed and been accepted.
     end
 endmodule
