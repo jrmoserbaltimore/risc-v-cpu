@@ -125,7 +125,7 @@ module SkidBuffer
         if (Reset)
         begin
             Reset <= 1'b0;
-            //Out.Busy <= 1'b0;
+            Out.Strobe <= 1'b0;
             Rstore <= 1'b0;
         end
         else if (!Out.Busy)
@@ -164,29 +164,87 @@ module SkidBuffer
     
     `ifdef FORMAL
     // Formal verification
-    // I have no idea how to do this.
-    always @(posedge Clk)
-    begin
-        // Always passes
-        assert(In.Busy == Rstore);
-        
-        if (!In.Busy)
-        begin
-            // Flush: Out.Strobe <= 1, Din <= RBuf
-            // Idle: Out.Strobe <= In.Strobe, Din <= rDin
-            // FIXME:  Detect when we are in either state
-        end
-        // Currently Buf, either from Pass or Flush
-        assert(
-               Rstore ==
-               // It is only possible to transition to Buf if receiving strobe while busy.
-                  ($past(In.Strobe) && $past(Out.Busy))
-                  // It is possible to idle at Buf while Out.Busy remains; In.Strobe will go away
-                  // because we accepted data.
-               || ($past(Out.Busy) && $past(Rstore))
-              );
-              // Note above ( ($past(In.Strobe)||$past(Rstore)) && $past(Out.Busy) ) is equivalent
-            
-    end
+
+    // Rstore is equivalent to In.Busy.  Using different names for clarity.
+    //
+    // All combinations of In.Strobe and Rstore (synonymous with Out.Busy) are valid; only certain
+    // states following these are valid, based on Out.Busy.
+    //
+    // (!In.Strobe && Rstore) occurs after the skid buffer buffers data from In when In has no
+    // further data
+    //
+    // (!Rstore && In.Strobe) is just pass-through or entering buffer.
+    //
+    // (Rstore && In.Strobe) is In waiting for the skid buffer to not be busy.
+    //
+    // (!Rstore && !In.Strobe) is idle, sitting in passthrough.
+
+    // Assumptions about caller (the output circuit can become busy whenever the hell it wants)
+    // Caller will hold strobe and data until !In.Busy
+    property FV_ASSUME_CALLER_STROBE_WAITS;
+        In.Strobe && In.Busy |=> In.Strobe && (Din == $past(Din)); 
+    endproperty
+
+    // Valid state changes
+
+    // A reset (or pipeline flush) must clear the buffer and outgoing strobe.
+    // Buffer and output data don't matter
+    property FV_RESET_CLEARS_STATE;
+        @(posedge Clk) Reset |=> !Reset && !Rstore && !Out.Strobe;
+    endproperty
+
+    // Rbuf should always be stable when storing a buffer    
+    property FV_BUFFER_IS_STABLE;
+        @(posedge Clk) Rstore |=> $stable(Rbuf);
+    endproperty
+
+    // Store data from In if not already storing data
+    property FV_BUFFER_SAVES_INPUT;
+        @posedge(Clk) disable iff (Rstore)
+          !Rstore |=> Rbuf == DataPort.Din;
+    endproperty
+
+    // flush or pass becomes pass
+    property FV_FLUSH_OR_PASS_TO_PASS;
+        @posedge(Clk)
+          !Rstore && (!In.Strobe || !Out.Busy) |=> !Rstore && (Out.Strobe == In.Strobe) && (rDin == Din);
+    endproperty
+
+    // pass becomes buf.
+    //property FV_PASS_TO_BUF;
+    property FV_PASS_BUF_OR_FLUSH_TO_BUF;
+        // This matches both Flush->Buf and Pass->Buf
+        //@posedge(Clk)
+        //  !Rstore && In.Strobe && Out.Busy |=> Rstore && (Out.Strobe == In.Strobe) && (rDin == Din);
+
+        // This matches Buf->Buf
+        //@posedge(Clk)
+        //  Rstore && Out.Busy |=> Rstore && (Out.Strobe == In.Strobe) && (rDin == Din);
+
+        // XXX:  Is Rstore or In.Busy more elucidating here?
+        @posedge(Clk)
+          Out.Busy && (In.Strobe || Rstore) |=> Rstore && (Out.Strobe == In.Strobe) && (rDin == Din);
+    endproperty
+    
+    // There is only one state change to reach here
+    property FV_BUF_OR_FLUSH_TO_FLUSH;
+        @posedge(Clk)
+            // Buf->Flush
+            (!Out.Busy && Rstore)
+            // Flush state -> Buf
+            // From Pass, if In.Strobe && !Out.Busy followed by !In.Strobe && Out.Busy, In.Busy (Rstore)
+            // will be 0, Out.Strobe will be 0, and rDin will be Din
+            || (!In.Strobe && Out.Busy && !Rstore && Out.Strobe == 1'b1 && rDin == Rbuf)
+          |=> !Rstore && (Out.Strobe == 1'b1) && (rDin == Rbuf);
+    endproperty
+
+    assume property FV_ASSUME_CALLER_STROBE_WAITS;
+
+    assert property FV_RESET_CLEARS_STATE;
+    assert property FV_BUFFER_IS_STABLE;
+    assert property FV_BUFFER_SAVES_INPUT;
+    assert property FV_FLUSH_OR_PASS_TO_PASS;
+    assert property FV_PASS_BUF_OR_FLUSH_TO_BUF;
+    assert property FV_BUF_OR_FLUSH_TO_FLUSH;
     `endif
 endmodule
