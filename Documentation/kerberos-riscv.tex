@@ -1,0 +1,56 @@
+\documentclass[a4paper,12pt]{book}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage[style=verbose-ibid,backend=biber]{biblatex}
+\usepackage{hyperref}
+
+% Code style
+\usepackage{listings}
+\usepackage{color}
+\definecolor{lightgray}{gray}{0.9}
+
+\lstset{
+    showstringspaces=false,
+    basicstyle=\ttfamily,
+    keywordstyle=\color{blue},
+    commentstyle=\color[grey]{0.6},
+    stringstyle=\color[RGB]{255,150,75}
+}
+
+\newcommand{\inlinecode}[2][Verilog]{\colorbox{lightgray}{\lstinline[language=#1]$#2$}}
+% /Code style
+
+%\setcounter{secnumdepth}{3}
+%\setcounter{tocdepth}{3}
+\usepackage{prettyref}
+\usepackage{units}
+\usepackage{amsmath}
+
+\addbibresource{./references.bib}
+\begin{document}
+
+\author{John R. Moser}
+\title{The Kerberos RISC-V Core}
+\date{May 2020}
+
+\frontmatter
+\maketitle
+\include{./TeX_files/preface}
+\cleardoublepage
+\tableofcontents
+
+\mainmatter
+\part{Prior Work}
+\include{./TeX_files/softcpus}
+\include{./TeX_files/adders}
+\include{./TeX_files/dividers}
+\include{./TeX_files/cache}
+\part{The Taiga RISC-V Soft Processor}
+\include{./TeX_files/taiga_intro}
+\part{Kerberos}
+\include{./TeX_files/pipelines}
+\backmatter
+% bibliography, glossary and index go here.
+%\printbibliography
+\end{document}

@@ -1,0 +1,11 @@
+*.pdf
+*.sav
+*.bak
+*.aux
+*.bbl
+*.blg
+*.log
+*.gz
+*.bcf
+*.xml
+*.out
