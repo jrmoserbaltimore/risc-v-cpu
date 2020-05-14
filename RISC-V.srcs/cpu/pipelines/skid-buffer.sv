@@ -67,31 +67,47 @@ interface ISkidBuffer
 #(
     parameter BufferSize = 32 // MUST be set
 );
-    logic sBusy;
-    uwire sStrobe;
-    uwire rBusy;
-    logic rStrobe;
-    
-    // Data processing and such
+    logic iBusy;
+    uwire iStrobe;
+    uwire oBusy;
+    logic oStrobe;
+    // Input and output strobe and busy are separate because we may stick a buffer between them
+
+    // Data input gets passed through or stored in a buffer; either way, the output goes to rDin
     uwire [BufferSize-1:0] Din;
     logic [BufferSize-1:0] rDin;
     
+    // In:  Left side, input from the viewpoint of the skid buffer
     modport In
     (
-        input .Strobe(sStrobe),
-        output .Busy(sBusy)
+        input .Strobe(iStrobe),
+        output .Busy(iBusy)
     );
-    
+
+    // Output from the view of the skid buffer
     modport Out
     (
-        input .Busy(rBusy),
-        output .Strobe(rStrobe)
+        input .Busy(oBusy),
+        output .Strobe(oStrobe)
     );
-    
+
     modport DataPort
     (
         input Din,
         output rDin
+    );
+
+    // Client
+    modport ClientOut
+    (
+        output .Strobe(iStrobe),
+        input .Busy(iBusy)
+    );
+    
+    modport ClientIn
+    (
+        output .Busy(oBusy),
+        input .Strobe(oStrobe)
     );
 endinterface
 

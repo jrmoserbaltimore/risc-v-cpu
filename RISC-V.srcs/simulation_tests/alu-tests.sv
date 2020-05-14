@@ -42,11 +42,12 @@ module TALUTests
     logic [31:0] PTB = '0;
     logic [31:0] PTS;
 
-    // Input (ISB.Sender) -SBC-> (ISB.Receiver) EAD (ISBR.Sender) -SBCR-> (ISBR.Receiver)
+    // Input (ISB.Out) -SBC-> (ISB.In) EAD (ISBR.Out) -SBCR-> (ISBR.In)
     ISkidBuffer #(.BufferSize($size(PTA) + $size(PTB))) ISB();
+    ISkidBuffer #(.BufferSize($size(PTA) + $size(PTB))) ISBR();
     
     SkidBuffer #(.BufferSize($size(PTA) + $size(PTB)))
-            SBC(.Clk(Clk), .Receiver(ISB.Receiver), .Sender(ISB.Sender), .DataPort(ISB.DataPort));
+            SBC(.Clk(Clk), .In(ISB.In), .Out(ISB.Out), .DataPort(ISB.DataPort));
 
     // ISB.Receiver Data -> Ar/Br    
     assign ISB.Din = {PTA,PTB};
@@ -54,15 +55,16 @@ module TALUTests
     uwire [$size(PTB)-1:0] Br = ISB.DataPort.rDin[$size(PTB)-1:0];
 
     uwire EABusy;
-    ExampleAdditionHandshake EAD(.Clk(Clk), .A(Ar), .B(Br), .S(PTS), .Strobe(ISB.Sender.Strobe), .Busy(EABusy));
+    assign EABusy = ISB.ClientOut.Busy;
+    ExampleAdditionHandshake EAD(.Clk(Clk), .A(Ar), .B(Br), .S(PTS), .PipeIn(ISB.ClientIn), .PipeOut(ISBR.ClientOut));
     // Setup
 
     logic HSStrobe = '0;
     logic HSBusy = '0;
     logic HSWait = '0;
     logic [$size(PTA)-1:0] HSResult = '0;
-    assign ISB.Sender.Strobe = HSStrobe;
-    assign ISB.Receiver.Busy = EABusy || HSBusy;
+    assign ISB.ClientOut.Strobe = HSStrobe;
+    assign ISBR.ClientIn.Busy = EABusy || HSBusy;
     initial
     begin
         Clk = 1'b0;
@@ -84,7 +86,7 @@ module TALUTests
         end
         else if (HSStrobe == 1'b1)
         begin
-             if (!ISB.Receiver.Busy)
+             if (!ISB.Out.Busy)
              begin
                 // Stop strobing only when not busy 
                 HSStrobe <= 1'b0;

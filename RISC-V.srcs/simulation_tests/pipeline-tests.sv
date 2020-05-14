@@ -5,8 +5,8 @@ module ExampleAdditionHandshake
     input logic [31:0] A,
     input logic [31:0] B,
     output logic [31:0] S,
-    ISkidBuffer.In PipeIn,
-    ISkidBuffer.Out PipeOut
+    ISkidBuffer.ClientIn PipeIn,
+    ISkidBuffer.ClientOut PipeOut
 );
     logic Processing = 1'b0;
     logic DataReady = 1'b0;
@@ -14,10 +14,16 @@ module ExampleAdditionHandshake
     bit [2:0] delay = '0;
  
     // Busy if we're processing
-    assign Busy = Processing || (DataReady && PipeOut.Busy);
+    assign PipeIn.Busy = Processing || (DataReady && PipeOut.Busy);
 
+    assign PipeOut.Strobe = DataReady;
     always_ff @(posedge Clk)
     begin
+        if (!PipeOut.Busy && DataReady)
+        begin
+            DataReady <= 1'b0;
+        end
+        // XXX:  Broken
         if (PipeIn.Strobe && !Processing)
         begin
             // If this is a multi-cycle instruction, it must set
@@ -45,6 +51,7 @@ module ExampleAdditionHandshake
                 // Send output
                 S <= OutS;
                 Processing <= 1'b0;
+                DataReady <= 1'b1;
              end
         end
     end
