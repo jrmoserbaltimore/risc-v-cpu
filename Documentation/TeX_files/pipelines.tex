@@ -80,11 +80,6 @@ I built the Kerberos pipeline based on excellent explanations at the ZipCPU blog
     \fill [black, rotate around={107:(50,-10)}] (50,-7) -- ++(0.5,1) -- ++(-1,0);
     \draw (40,-35) node [right, rotate=90] {$In.Strobe\mbox{ }\text{\&\&}\mbox{ }Out.Busy$};
 
-    % Connector Flush→Flush
-    \draw [black, rotate around={90:(50,-40)}] (47,-39.25) arc (250:0:2.25);
-    \fill [black, rotate around={163:(50,-40)}] (50,-37) -- ++(0.5,1) -- ++(-1,0);
-    \draw (33,-42) node [below] {$!In.Strobe\mbox{ }\text{\&\&}\mbox{ }Out.Busy$};
-
     % Connector Flush→Pass
     \draw [black, rotate around={0:(50,-40)}] (47,-40) arc (-60:10: -80 and 26.5);
     \fill [black, rotate around={146:(10,-10)}] (10,-7) -- ++(0.5,1) -- ++(-1,0);

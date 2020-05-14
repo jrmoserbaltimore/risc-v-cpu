@@ -133,31 +133,35 @@ module SkidBuffer
             // Next stage is not busy and is ready for data
             if (!Rstore)
             begin
-                // Bypass the buffer and strobe
+                // We're either at Flush (output right now is from Rbuf) or Pass
+                // Enter or continue passthrough of strobe and data
                 DataPort.rDin <= DataPort.Din;
                 Out.Strobe <= In.Strobe;
             end
             else
             begin
-                // We have data in the buffer, flush to the client
+                // We're at Buf, move to Flush:  flush to the client
                 DataPort.rDin <= Rbuf;
                 Out.Strobe <= 1'b1;
             end
-            // Register is empty in either case.  If we're still busy we can bank new data.
+            // Register is empty in either case
             Rstore <= 1'b0;
         end
         else if (!In.Strobe)
         begin
-            // No data payload at all:  Not busy and not sending
+            // We're receiving Out.Busy and not In.Strobe, so we are either:
+            // - at Pass with nothing,
+            // - at Pass after passing through data with nothing in the buffer
+            // - At Flush after having handed off the buffer the last time !Out.Busy
+            // Return to Pass 
             Out.Strobe <= In.Strobe;
             Rstore <= 1'b0; // Redundant?
-            // Out.Busy <= 1'b1; // This is always Rstore
-
         end
         else if (In.Strobe && !In.Busy)
         begin
-            // We're busy, not signaling busy, and we received a strobe.
-            // Bank to register.
+            // We're waiting on output, not signaling busy, and we received a strobe.  Either:
+            //  - At Pass and received a strobe while Out.Busy, so move to Buf
+            //  - At Flush and received a strobe, so buffer the new data and return to Buf
             Rstore <= Out.Strobe && In.Strobe;
         end
     end
@@ -227,15 +231,9 @@ module SkidBuffer
     endproperty
     
     // There is only one state change to reach here
-    property FV_BUF_OR_FLUSH_TO_FLUSH;
+    property FV_BUF_TO_FLUSH;
         @posedge(Clk)
-            // Buf->Flush
-            (!Out.Busy && Rstore)
-            // Flush state -> Buf
-            // From Pass, if In.Strobe && !Out.Busy followed by !In.Strobe && Out.Busy, In.Busy (Rstore)
-            // will be 0, Out.Strobe will be 0, and rDin will be Din
-            || (!In.Strobe && Out.Busy && !Rstore && Out.Strobe == 1'b1 && rDin == Rbuf)
-          |=> !Rstore && (Out.Strobe == 1'b1) && (rDin == Rbuf);
+          (!Out.Busy && Rstore) |=> !Rstore && (Out.Strobe == 1'b1) && (rDin == Rbuf);
     endproperty
 
     assume property FV_ASSUME_CALLER_STROBE_WAITS;
@@ -245,6 +243,6 @@ module SkidBuffer
     assert property FV_BUFFER_SAVES_INPUT;
     assert property FV_FLUSH_OR_PASS_TO_PASS;
     assert property FV_PASS_BUF_OR_FLUSH_TO_BUF;
-    assert property FV_BUF_OR_FLUSH_TO_FLUSH;
+    assert property FV_BUF_TO_FLUSH;
     `endif
 endmodule
