@@ -11,7 +11,7 @@ module ExampleAdditionHandshake
     logic Processing = 1'b0;
     logic DataReady = 1'b0;
     logic [$size(S)-1:0] OutS;
-    bit [2:0] delay = '0;
+    bit [4:0] delay = '0;
  
     // Busy if we're processing
     assign PipeIn.Busy = Processing || (DataReady && PipeOut.Busy);
@@ -37,7 +37,7 @@ module ExampleAdditionHandshake
             // This should have the same effect as just setting Sender.Strobe
             // and clearing Receiver.Busy in this block; we let BH handle that part
             Processing <= 1'b1;
-            delay <= 1; // 3 cycle operation
+            delay <= 9; // 3 cycle operation
         end
         else if (Processing)
         begin

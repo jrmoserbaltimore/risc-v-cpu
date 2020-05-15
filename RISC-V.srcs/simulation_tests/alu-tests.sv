@@ -49,6 +49,9 @@ module TALUTests
     SkidBuffer #(.BufferSize($size(PTA) + $size(PTB)))
             SBC(.Clk(Clk), .In(ISB.In), .Out(ISB.Out), .DataPort(ISB.DataPort));
 
+    SkidBuffer #(.BufferSize($size(PTA) + $size(PTB)))
+            SBO(.Clk(Clk), .In(ISBR.In), .Out(ISBR.Out), .DataPort(ISBR.DataPort));
+
     // ISB.Receiver Data -> Ar/Br    
     assign ISB.Din = {PTA,PTB};
     uwire [$size(PTA)-1:0] Ar = ISB.DataPort.rDin[($size(PTA) + $size(PTB))-1:$size(PTB)];
@@ -64,7 +67,7 @@ module TALUTests
     logic HSWait = '0;
     logic [$size(PTA)-1:0] HSResult = '0;
     assign ISB.ClientOut.Strobe = HSStrobe;
-    assign ISBR.ClientIn.Busy = EABusy || HSBusy;
+    assign ISBR.ClientIn.Busy = (EABusy || HSBusy) ? 1'b1 : 1'b0;
     initial
     begin
         Clk = 1'b0;
@@ -81,20 +84,13 @@ module TALUTests
             // Increment and strobe immediately
             PTA <= PTA + 1;
             HSStrobe <= 1'b1;
-            delayPipe = 5;
+            delayPipe = 1;
             HSBusy <= 1'b1;
         end
-        else if (HSStrobe == 1'b1)
+        else if (!EABusy)
         begin
-             if (!ISB.Out.Busy)
-             begin
-                // Stop strobing only when not busy 
-                HSStrobe <= 1'b0;
-                HSBusy <= 1;
-            end
-        end
-        else if (delayPipe > 0)
-        begin
+            HSStrobe <= 1'b0;
+            HSBusy <= 1'b0;
             // Decrement only when this happens
             delayPipe--;
         end

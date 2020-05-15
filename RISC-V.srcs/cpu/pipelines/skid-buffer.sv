@@ -60,7 +60,7 @@
 // Keep in mind the "Data" output is implicit:  the client places data directly on
 // the output bus.
 //////////////////////////////////////////////////////////////////////////////////
-`default_nettype uwire
+`default_nettype none
 
 // This goes across two components
 interface ISkidBuffer
@@ -163,22 +163,23 @@ module SkidBuffer
             // Register is empty in either case
             Rstore <= 1'b0;
         end
-        else if (!In.Strobe)
+        else if (!Out.Strobe)
         begin
-            // We're receiving Out.Busy and not In.Strobe, so we are either:
+            // We're receiving Out.Busy and not sending Out.Strobe, so we are either:
             // - at Pass with nothing,
             // - at Pass after passing through data with nothing in the buffer
             // - At Flush after having handed off the buffer the last time !Out.Busy
             // Return to Pass 
             Out.Strobe <= In.Strobe;
-            Rstore <= 1'b0; // Redundant?
+            DataPort.rDin <= DataPort.Din;
+            Rstore <= 1'b0; // Clear flush
         end
         else if (In.Strobe && !In.Busy)
         begin
             // We're waiting on output, not signaling busy, and we received a strobe.  Either:
             //  - At Pass and received a strobe while Out.Busy, so move to Buf
             //  - At Flush and received a strobe, so buffer the new data and return to Buf
-            Rstore <= Out.Strobe && In.Strobe;
+            Rstore <= Out.Busy && In.Strobe;
         end
     end
     

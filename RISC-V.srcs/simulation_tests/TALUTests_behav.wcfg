@@ -12,14 +12,14 @@
    </db_ref_list>
    <zoom_setting>
       <ZoomStartTime time="0fs"></ZoomStartTime>
-      <ZoomEndTime time="78587fs"></ZoomEndTime>
-      <Cursor1Time time="27500fs"></Cursor1Time>
+      <ZoomEndTime time="111327fs"></ZoomEndTime>
+      <Cursor1Time time="65000fs"></Cursor1Time>
    </zoom_setting>
    <column_width_setting>
       <NameColumnWidth column_width="175"></NameColumnWidth>
-      <ValueColumnWidth column_width="126"></ValueColumnWidth>
+      <ValueColumnWidth column_width="118"></ValueColumnWidth>
    </column_width_setting>
-   <WVObjectSize size="11" />
+   <WVObjectSize size="12" />
    <wave_markers>
       <marker time="45000" label="" />
    </wave_markers>
@@ -47,6 +47,10 @@
       <obj_property name="ElementShortName">HSStrobe</obj_property>
       <obj_property name="ObjectShortName">HSStrobe</obj_property>
    </wvobject>
+   <wvobject fp_name="/TALUTests/EABusy" type="logic">
+      <obj_property name="ElementShortName">EABusy</obj_property>
+      <obj_property name="ObjectShortName">EABusy</obj_property>
+   </wvobject>
    <wvobject fp_name="/TALUTests/delayPipe" type="array">
       <obj_property name="ElementShortName">delayPipe[2:0]</obj_property>
       <obj_property name="ObjectShortName">delayPipe[2:0]</obj_property>
@@ -66,6 +70,32 @@
       <wvobject fp_name="/TALUTests/ISB/BufferSize" type="array">
          <obj_property name="ElementShortName">BufferSize[31:0]</obj_property>
          <obj_property name="ObjectShortName">BufferSize[31:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="group66" type="group">
+         <obj_property name="label">ClientIn</obj_property>
+         <obj_property name="DisplayName">label</obj_property>
+         <obj_property name="isExpanded"></obj_property>
+         <wvobject fp_name="/TALUTests/ISB/ClientIn/Busy" type="logic">
+            <obj_property name="ElementShortName">Busy</obj_property>
+            <obj_property name="ObjectShortName">Busy</obj_property>
+         </wvobject>
+         <wvobject fp_name="/TALUTests/ISB/ClientIn/Strobe" type="logic">
+            <obj_property name="ElementShortName">Strobe</obj_property>
+            <obj_property name="ObjectShortName">Strobe</obj_property>
+         </wvobject>
+      </wvobject>
+      <wvobject fp_name="group60" type="group">
+         <obj_property name="label">ClientOut</obj_property>
+         <obj_property name="DisplayName">label</obj_property>
+         <obj_property name="isExpanded"></obj_property>
+         <wvobject fp_name="/TALUTests/ISB/ClientOut/Strobe" type="logic">
+            <obj_property name="ElementShortName">Strobe</obj_property>
+            <obj_property name="ObjectShortName">Strobe</obj_property>
+         </wvobject>
+         <wvobject fp_name="/TALUTests/ISB/ClientOut/Busy" type="logic">
+            <obj_property name="ElementShortName">Busy</obj_property>
+            <obj_property name="ObjectShortName">Busy</obj_property>
+         </wvobject>
       </wvobject>
       <wvobject fp_name="group207" type="group">
          <obj_property name="label">In</obj_property>
@@ -161,12 +191,26 @@
          <obj_property name="ObjectShortName">OutS[31:0]</obj_property>
       </wvobject>
       <wvobject fp_name="/TALUTests/EAD/delay" type="array">
-         <obj_property name="ElementShortName">delay[2:0]</obj_property>
-         <obj_property name="ObjectShortName">delay[2:0]</obj_property>
+         <obj_property name="ElementShortName">delay[4:0]</obj_property>
+         <obj_property name="ObjectShortName">delay[4:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="group63" type="group">
+         <obj_property name="label">PipeIn</obj_property>
+         <obj_property name="DisplayName">label</obj_property>
+         <obj_property name="isExpanded"></obj_property>
+         <wvobject fp_name="/TALUTests/EAD/PipeIn/Busy" type="logic">
+            <obj_property name="ElementShortName">Busy</obj_property>
+            <obj_property name="ObjectShortName">Busy</obj_property>
+         </wvobject>
+         <wvobject fp_name="/TALUTests/EAD/PipeIn/Strobe" type="logic">
+            <obj_property name="ElementShortName">Strobe</obj_property>
+            <obj_property name="ObjectShortName">Strobe</obj_property>
+         </wvobject>
       </wvobject>
       <wvobject fp_name="group238" type="group">
          <obj_property name="label">Receiver</obj_property>
          <obj_property name="DisplayName">label</obj_property>
+         <obj_property name="isExpanded"></obj_property>
       </wvobject>
       <wvobject fp_name="/TALUTests/EAD/PipeIn/Strobe" type="logic">
          <obj_property name="ElementShortName">Strobe</obj_property>
@@ -179,6 +223,7 @@
       <wvobject fp_name="group241" type="group">
          <obj_property name="label">Sender</obj_property>
          <obj_property name="DisplayName">label</obj_property>
+         <obj_property name="isExpanded"></obj_property>
       </wvobject>
       <wvobject fp_name="/TALUTests/EAD/PipeOut/Busy" type="logic">
          <obj_property name="ElementShortName">Busy</obj_property>
