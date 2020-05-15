@@ -16,46 +16,71 @@
 // 
 // License:  MIT, 7-year CC0
 // 
-// Revision: 0.01
+// Revision: 0.02
+// Revision 0.02 - Cache type annotations
 // Revision 0.01 - File Created
 // Additional Comments:
 //
 //////////////////////////////////////////////////////////////////////////////////
-`default_nettype uwire
+`default_nettype none
 
-typedef enum
-{
-    INFERRED,
-    HAN_CARLSON,
-    HAN_CARLSON_SPECULATIVE
-} adder_type;
+package Kerberos;
 
-typedef enum
-{
-    DIV_QUICKDIV,
-    DIV_PARAVARTYA
-} divider_type;
+    typedef enum
+    {
+        ADD_INFERRED,
+        ADD_HAN_CARLSON,
+        ADD_HAN_CARLSON_SPECULATIVE,
+        ADD_DSP48
+    } adder_type;
+    
+    typedef enum
+    {
+        ALU_BASIC,
+        ALU_FABRIC,
+        ALU_DSP48
+    } alu_type;
+    typedef enum
+    {
+        DIV_QUICKDIV,
+        DIV_PARAVARTYA
+    } divider_type;
+    
+    typedef enum
+    {
+        CACHE_NCOR
+    } cache_type;
+    
+    typedef enum
+    {
+        CACHE_VIVT
+    } cache_indexing;
+    
+    // All smaller widths supported implicitly
+    typedef enum
+    {
+        FPU_NONE,
+        FPU_F,
+        FPU_D,
+        FPU_Q
+    } fpu_type;
+    
+    typedef enum
+    {
+        A_NONE,
+        A_ATOMIC,
+        A_ZAM
+    } atomic_type;
+    
+    function int xlen2bits(input int xlen);
+    begin
+        assert(xlen > 0 && xlen < 4);
+        return 16 << xlen;
+    end
+    endfunction;
+endpackage
 
-typedef enum
-{
-    CACHE_NCOR
-} cache_type;
-
-// All smaller widths supported implicitly
-typedef enum
-{
-    FPU_NONE,
-    FPU_F,
-    FPU_D,
-    FPU_Q
-} fpu_type;
-
-typedef enum
-{
-    A_NONE,
-    A_ATOMIC,
-    A_ZAM
-} atomic_type;
+import Kerberos::*;
 
 module KerberosRISCV
 #(
@@ -64,9 +89,12 @@ module KerberosRISCV
     parameter RVA = A_ATOMIC, // A extension
     parameter FPU = FPU_D, // FDQ extension
     parameter RVC = 1, // 1 = C extension
-    parameter Adder = HAN_CARLSON_SPECULATIVE,
+    parameter ALU = ALU_BASIC,
+    parameter Adder = ADD_HAN_CARLSON_SPECULATIVE,
     parameter Divider = DIV_PARAVARTYA,
     parameter Cache = CACHE_NCOR, // Cache type
+    parameter D1Index = CACHE_VIVT,
+    parameter I1Index = CACHE_VIVT,
     parameter L1Cache = 4, // Kilobytes
     parameter L2Cache = 8 // Kilobytes
 );

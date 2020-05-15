@@ -16,7 +16,8 @@
 // 
 // License:  MIT, 7-year CC0
 // 
-// Revision: 0.01
+// Revision: 0.10
+// Revision 0.10 - Configurable adder (inferred vs fabric types)
 // Revision 0.01 - File Created
 // Additional Comments:
 // 
@@ -25,13 +26,15 @@
 // MUL may use the ALU's other resources, including bi shifters and the adder.  MUL
 // ties up the ALU for several cycles.
 //////////////////////////////////////////////////////////////////////////////////
-`default_nettype uwire
+`default_nettype none
+
+import Kerberos::*;
 
 interface IALU
 #(
-    parameter XLEN = 32
-);
-    logic [XLEN-1:0] A, B, rs1, rs2, rd;
+    parameter XLEN = 2
+);  
+    logic [xlen2bits(XLEN)-1:0] A, B, rs1, rs2, rd;
     logic Equal, LessThan, LessThanUnsigned;
     
     // ----------------------
@@ -142,23 +145,22 @@ endinterface
 
 module BasicALU
 #(
-    XLEN = 32
+    parameter XLEN = 2,
+    parameter Adder = ADD_HAN_CARLSON_SPECULATIVE
 )
 (
-    input logic Clk,
+    input uwire Clk,
     IALU.ALU ALUPort
 );
 
-    IBarrelShifter #(XLEN) Ibs();
-    BarrelShifter #(XLEN) bs(.Shifter(Ibs.Shifter));
-
-    // one-cycle operations
     always_comb
     begin
+        // Comparator port
         ALUPort.Equal = (ALUPort.A == ALUPort.B) ? 1'b1 : 1'b0;
         ALUPort.LessThan = (signed'(ALUPort.A) < signed'(ALUPort.B)) ? 1'b1 : 1'b0;
         ALUPort.LessThanUnsigned = (unsigned'(ALUPort.A) < unsigned'(ALUPort.B)) ? 1'b1 : 1'b0;
 
+        // Bit ops
         if (ALUPort.lopAND == 1'b1)
             assign ALUPort.rd = ALUPort.rs1 & ALUPort.rs2;
         else if (ALUPort.lopOR == 1'b1)
@@ -167,13 +169,49 @@ module BasicALU
             assign ALUPort.rd = ALUPort.rs1 ^ ALUPort.rs2;
     end
 
+    // -------------------------
+    // -- Adder Configuration --
+    // -------------------------
+    generate
+    if (Adder == ADD_INFERRED)
+    begin
+        always_ff@(posedge Clk)
+        begin
+            if (ALUPort.lopAdd == 1'b1 && ALUPort.opArithmetic == 1'b0)
+                assign ALUPort.rd = ALUPort.rs1 + ALUPort.rs2;
+            else if (ALUPort.lopAdd == 1'b1 && ALUPort.opArithmetic == 1'b1)
+                assign ALUPort.rd = ALUPort.rs1 - ALUPort.rs2;
+        end
+    end
+    else if (Adder == ADD_HAN_CARLSON_SPECULATIVE || Adder == ADD_HAN_CARLSON)
+    begin
+        // Speculative Han-Carlson Adder
+        IAdder #(XLEN) IAdd();
+        HanCarlsonAdder #(XLEN) HCAdder(.DataPort(IAdd.Adder));
+    
+        always_ff@(posedge Clk)
+        begin
+            if (ALUPort.lopAdd == 1'b1)
+            begin
+                IAdd.A = ALUPort.rs1;
+                IAdd.B = ALUPort.rs2;
+                IAdd.Sub = ALUPort.opArithmetic;
+                IAdd.Speculate = (Adder == ADD_HAN_CARLSON_SPECULATIVE); // && context using speculative add
+                // FIXME:  pass through adder busy signal
+            end
+        end
+    end
+    endgenerate
+
+    // --------------------
+    // -- Barrel Shifter --
+    // --------------------
+    IBarrelShifter #(XLEN) Ibs();
+    BarrelShifter #(XLEN) bs(.Shifter(Ibs.Shifter));
+
     always_ff@(posedge Clk)
     begin
-        if (ALUPort.lopAdd == 1'b1 && ALUPort.opArithmetic == 1'b0)
-            assign ALUPort.rd = ALUPort.rs1 + ALUPort.rs2;
-        else if (ALUPort.lopAdd == 1'b1 && ALUPort.opArithmetic == 1'b1)
-            assign ALUPort.rd = ALUPort.rs1 - ALUPort.rs2;
-        else if (ALUPort.lopShift == 1'b1)
+        if (ALUPort.lopShift == 1'b1)
         begin
             assign Ibs.Shifter.Din = ALUPort.rs1;
             assign Ibs.Shifter.Shift = ALUPort.rs2[$clog2(XLEN):0];
@@ -181,51 +219,6 @@ module BasicALU
             assign Ibs.Shifter.opRightShift = ALUPort.opRightShift;
             assign ALUPort.rd = Ibs.Shifter.Dout;
         end
-        // FIXME:  MUL
-
-    end;
-endmodule
-
-// Supports only add, sub, cmp, and shift, plus bitmasks because they're cheap
-// Basically omits MUL.
-module SubsetALU
-#(
-    XLEN = 32
-)
-(
-    input logic Clk,
-    IALU.ALU ALUPort
-);
-
-    IBarrelShifter #(XLEN) Ibs();
-    BarrelShifter #(XLEN) bs(.Shifter(Ibs.Shifter));
-
-    // one-cycle operations
-    always_comb
-    begin
-        ALUPort.Equal = (ALUPort.A == ALUPort.B) ? 1'b1 : 1'b0;
-        ALUPort.LessThan = (signed'(ALUPort.A) < signed'(ALUPort.B)) ? 1'b1 : 1'b0;
-        ALUPort.LessThanUnsigned = (unsigned'(ALUPort.A) < unsigned'(ALUPort.B)) ? 1'b1 : 1'b0;
-        
-        assign Ibs.Shifter.Din = ALUPort.rs1;
-        assign Ibs.Shifter.Shift = ALUPort.rs2[$clog2(XLEN):0];
-        assign Ibs.Shifter.opArithmetic = ALUPort.opArithmetic;
-        assign Ibs.Shifter.opRightShift = ALUPort.opRightShift;
-
-        if (ALUPort.lopAdd == 1'b1)
-            assign ALUPort.rd = ALUPort.rs1 + (ALUPort.opArithmetic == 1'b0) ? ALUPort.rs2 : - ALUPort.rs2;
-        else if (ALUPort.lopAND == 1'b1)
-            assign ALUPort.rd = ALUPort.rs1 & ALUPort.rs2;
-        else if (ALUPort.lopOR == 1'b1)
-            assign ALUPort.rd = ALUPort.rs1 | ALUPort.rs2;
-        else if (ALUPort.lopXOR == 1'b1)
-            assign ALUPort.rd = ALUPort.rs1 ^ ALUPort.rs2;
-        else if (ALUPort.lopShift == 1'b1)
-            assign ALUPort.rd = Ibs.Shifter.Dout;
     end
-
-    always_ff@(posedge Clk)
-    begin
-
-    end;
+        // FIXME:  MUL
 endmodule
