@@ -5,8 +5,8 @@
 // Engineer: John Moser
 // 
 // Create Date: 05/02/2020
-// Design Name: Branch Control
-// Module Name: ControlBranch
+// Design Name: Execution Unit
+// Module Name: ExecutionUnit
 // Project Name: RISC-V
 // Target Devices: Xilinx 7-series
 // Tool Versions: Vivado 2019.2.1
@@ -48,4 +48,13 @@
 // into a single execution unit accelerates integer-division-heavy code paths when
 // divisions are independent.
 ////////////////////////////////////////////////////////////////////////////////////
-`default_nettype uwire
+`default_nettype none
+
+module ExecutionUnit
+#(
+    parameter XLEN = 2
+)
+(
+    
+);
+endmodule

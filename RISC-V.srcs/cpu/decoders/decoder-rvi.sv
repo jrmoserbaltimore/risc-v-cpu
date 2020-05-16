@@ -16,29 +16,25 @@
 // 
 // License:  MIT, 7-year CC0
 // 
-// Revision: 0.2
+// Revision: 0.3
+// Revision 0.3 - Reworked around new data unions
 // Revision 0.2 - Changed to IPipelineData interface
 // Revision 0.1 - Added all except FENCE, ECALL, EBREAK
 // Revision 0.01 - File Created
 // Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
-`default_nettype uwire
+`default_nettype none
+
+import Kerberos::*;
 
 module RVIDecoderTable
 (
+    input instruction_t Insn,
     IPipelineData.ContextIn ContextIn,
     IPipelineData.DecodedOut DecodedOut,
     output logic Sel
 );
-    // opcode
-    let opcode = ContextIn.insn[6:0];
-    let funct3 = ContextIn.insn[14:12];
-    // I-type immediate value
-    let imm = ContextIn.insn[31:20];
-    // R-type
-    let funct7 = ContextIn.insn[31:25];
-
     // ---------------------------------
     // -- RV32I/RV64I jump and branch --
     // ---------------------------------
@@ -50,58 +46,39 @@ module RVIDecoderTable
     // 1ui      1100011     BLT     BGE     BLTU        BGEU
     module Branch
     (
-        IPipelineData.DecodedOut DecodedOut,
+        input instruction_t Insn,
+        output decode_data_t DecodedOut,
         output logic Sel
     );
+        logic_ops_group_t ops;
+        assign ops = DecodedOut.ops;
+
+        logic [6:0] opcode;
+        assign opcode = Insn.r.opcode;
+        logic[2:0] funct3;
+        assign funct3 = Insn.r.funct3;
+
         always_comb
         begin
             // Clear state
-            DecodedOut.lopAdd = 1'b0;
-            DecodedOut.lopShift = 1'b0;
-            DecodedOut.lopCmp = 1'b0;
-            DecodedOut.lopAND = 1'b0;
-            DecodedOut.lopOR = 1'b0;
-            DecodedOut.lopXOR = 1'b0;
-            DecodedOut.lopMUL = 1'b0;
-            DecodedOut.lopDIV = 1'b0;
-            DecodedOut.lopLoad = 1'b0;
-            DecodedOut.lopStore = 1'b0;
-            DecodedOut.lopIllegal = 1'b0;
-            
-            DecodedOut.opB = 1'b0;
-            DecodedOut.opH = 1'b0;
-            DecodedOut.opW = 1'b0;
-            DecodedOut.opD = 1'b0;
-            DecodedOut.opUnsigned = 1'b0;
-            DecodedOut.opArithmetic = 1'b0;
-            DecodedOut.opRightShift = 1'b0;
-            DecodedOut.opHSU = 1'b0;
-            DecodedOut.opRemainder = 1'b0;
-    
-            DecodedOut.lrR = 1'b0;
-            DecodedOut.lrI = 1'b0;
-            DecodedOut.lrS = 1'b0;
-            DecodedOut.lrB = 1'b0;
-            DecodedOut.lrU = 1'b0;
-            DecodedOut.lrJ = 1'b0;
-            
-            Sel = 1'b0;
+            DecodedOut.bitfield = '0;
             if (
                 ((opcode & 7'b1100011) == 7'b1100011)
                 && opcode[4] == 1'b0
-                // && opcode [3:2] != 2'b10 // Unnecessary due to no check for this one
+                // && Insn.r.opcode [3:2] != 2'b10 // Unnecessary due to no check for illegal instruction
                )
             begin
                 // Definitely a Branch/JAL/JALR opcode
+                ops.ops.Branch = 1'b1;
                 // J-type JAL
-                DecodedOut.lrJ = (opcode[3:2] == 2'b11) ? 1'b1 : 1'b0;
+                ops.load_resource.J = (opcode[3:2] == 2'b11) ? 1'b1 : 1'b0;
                 // B-type Branch opcode; funct3 cannot be 010 or 011
-                DecodedOut.lrB = (opcode[3:2] == 2'b00 && funct3[2:1] != 2'b01) ? 1'b1 : 1'b0;
+                ops.load_resource.B = (opcode[3:2] == 2'b00 && funct3[2:1] != 2'b01) ? 1'b1 : 1'b0;
                 // I-type JALR
-                DecodedOut.lrI = (opcode[3:2] == 2'b01 && funct3 == 3'b000) ? 1'b1 : 1'b0;
-                Sel = DecodedOut.lrI | DecodedOut.lrB | DecodedOut.lrJ;
-                // Ignore all invalid or non-branch instructions
+                ops.load_resource.I = (opcode[3:2] == 2'b01 && funct3 == 3'b000) ? 1'b1 : 1'b0;
             end
+            // Ignore all invalid or non-branch instructions
+            Sel = ops.load_resource.J | ops.load_resource.B | ops.load_resource.J;
         end
     endmodule
 
@@ -125,80 +102,59 @@ module RVIDecoderTable
     // 011      0100011     SD
     module LoadStore
     (
-        IPipelineData.DecodedOut DecodedOut,
+        input instruction_t Insn,
+        output decode_data_t DecodedOut,
         output logic Sel
     );
+        logic_ops_group_t ops;
+        assign ops = DecodedOut.ops;
+
+        logic [6:0] opcode;
+        assign opcode = Insn.r.opcode;
+        logic[2:0] funct3;
+        assign funct3 = Insn.r.funct3;
+
         always_comb
         begin
             // Clear state
-            DecodedOut.lopAdd = 1'b0;
-            DecodedOut.lopShift = 1'b0;
-            DecodedOut.lopCmp = 1'b0;
-            DecodedOut.lopAND = 1'b0;
-            DecodedOut.lopOR = 1'b0;
-            DecodedOut.lopXOR = 1'b0;
-            DecodedOut.lopMUL = 1'b0;
-            DecodedOut.lopDIV = 1'b0;
-            DecodedOut.lopLoad = 1'b0;
-            DecodedOut.lopStore = 1'b0;
-            DecodedOut.lopIllegal = 1'b0;
-            
-            DecodedOut.opB = 1'b0;
-            DecodedOut.opH = 1'b0;
-            DecodedOut.opW = 1'b0;
-            DecodedOut.opD = 1'b0;
-            DecodedOut.opUnsigned = 1'b0;
-            DecodedOut.opArithmetic = 1'b0;
-            DecodedOut.opRightShift = 1'b0;
-            DecodedOut.opHSU = 1'b0;
-            DecodedOut.opRemainder = 1'b0;
-    
-            DecodedOut.lrR = 1'b0;
-            DecodedOut.lrI = 1'b0;
-            DecodedOut.lrS = 1'b0;
-            DecodedOut.lrB = 1'b0;
-            DecodedOut.lrU = 1'b0;
-            DecodedOut.lrJ = 1'b0;
-            
-            Sel = 1'b0;
+            DecodedOut.bitfield = '0;
             if (
-                   ((opcode | 7'b0100000) == 7'b0100011) // Load/Store
-                || (opcode == 7'b0110111) // LUI
-                || (opcode == 7'b0010111) // AUIPC
+                (
+                    ((opcode | 7'b0100000) == 7'b0100011) // Load/Store
+                 || (opcode == 7'b0110111) // LUI
+                 || (opcode == 7'b0010111) // AUIPC
+                )
+                && !((opcode[5] == 1'b1) && (funct3[2] == 1'b1)) // Undefined
                )
             begin
-                if ((opcode[5] == 1'b1) && (funct3[2] == 1'b1))
-                    // Illegal instruction
-                    DecodedOut.lopIllegal = 1'b1;
-                else
-                begin
-                    case (opcode)
-                    // Load/Store
-                        7'b0000011 || 7'b0100011:
-                        begin
-                            // LWU is also "110"
-                            DecodedOut.opUnsigned = funct3[2];
-                            //64-bit LD/SD
-                            DecodedOut.opD = funct3[1] & funct3[0];
-                            // 32-bit LD/ST
-                            DecodedOut.opW = funct3[1] & ~DecodedOut.opD;
-                            DecodedOut.opH = funct3[0] & ~DecodedOut.opD;
-                            // Operation load/store
-                            DecodedOut.lopLoad  = ~opcode[5];
-                            DecodedOut.lopStore = opcode[5];
-                            DecodedOut.lrI      = DecodedOut.lopLoad;
-                            DecodedOut.lrS      = DecodedOut.lopStore;
-                        end
-                        7'b0110111 || 7'b0010111:
-                        begin
-                            // LUI/AUIPC
-                            DecodedOut.lopLoad = 1'b1;
-                            // U type
-                            DecodedOut.lrU     = opcode[5];
-                        end
-                    endcase
-                end
+                case (opcode)
+                // Load/Store
+                    7'b0000011 || 7'b0100011:
+                    begin
+                        // LWU is also "110"
+                        ops.flags.Unsigned = funct3[2];
+                        //64-bit LD/SD
+                        ops.flags.D = funct3[1] & funct3[0];
+                        // 32-bit LD/ST
+                        ops.flags.W = funct3[1] & ~ops.flags.D;
+                        ops.flags.H = funct3[0] & ~ops.flags.D;
+                        // Operation load/store
+                        ops.ops.Load  = ~opcode[5];
+                        ops.ops.Store = opcode[5];
+                        ops.load_resource.I      = ops.ops.Load;
+                        ops.load_resource.S      = ops.ops.Store;
+                    end
+                    7'b0110111 || 7'b0010111:
+                    begin
+                        // LUI/AUIPC
+                        ops.ops.Load = 1'b1;
+                        // U type
+                        ops.load_resource.U     = opcode[5];
+                    end
+                endcase
             end
+            // Only raise Sel on recognized valid load/store instruction
+            Sel = ops.ops.Load | ops.ops.Store;
         end
     endmodule
 
@@ -219,42 +175,24 @@ module RVIDecoderTable
     // 0000000  111     0i1w011     AND                 ANDI
     module Arithmetic
     (
-        IPipelineData.DecodedOut DecodedOut,
+        input instruction_t Insn,
+        output decode_data_t DecodedOut,
         output logic Sel
     );
+        logic_ops_group_t ops;
+        assign ops = DecodedOut.ops;
+
+        logic [6:0] opcode;
+        assign opcode = Insn.r.opcode;
+        logic[2:0] funct3;
+        assign funct3 = Insn.r.funct3;
+        logic[6:0] funct7;
+        assign funct7 = Insn.r.funct7;
+
         always_comb
         begin
             // Clear state
-            DecodedOut.lopAdd = 1'b0;
-            DecodedOut.lopShift = 1'b0;
-            DecodedOut.lopCmp = 1'b0;
-            DecodedOut.lopAND = 1'b0;
-            DecodedOut.lopOR = 1'b0;
-            DecodedOut.lopXOR = 1'b0;
-            DecodedOut.lopMUL = 1'b0;
-            DecodedOut.lopDIV = 1'b0;
-            DecodedOut.lopLoad = 1'b0;
-            DecodedOut.lopStore = 1'b0;
-            DecodedOut.lopIllegal = 1'b0;
-            
-            DecodedOut.opB = 1'b0;
-            DecodedOut.opH = 1'b0;
-            DecodedOut.opW = 1'b0;
-            DecodedOut.opD = 1'b0;
-            DecodedOut.opUnsigned = 1'b0;
-            DecodedOut.opArithmetic = 1'b0;
-            DecodedOut.opRightShift = 1'b0;
-            DecodedOut.opHSU = 1'b0;
-            DecodedOut.opRemainder = 1'b0;
-    
-            DecodedOut.lrR = 1'b0;
-            DecodedOut.lrI = 1'b0;
-            DecodedOut.lrS = 1'b0;
-            DecodedOut.lrB = 1'b0;
-            DecodedOut.lrU = 1'b0;
-            DecodedOut.lrJ = 1'b0;
-            
-            Sel = 1'b0;
+            DecodedOut.bitfield = '0;
             // Not RVI Arithmetic if these aren't met
             if (
                 ((opcode & 7'b0010011) == 7'b0010011) // These bits on
@@ -264,63 +202,59 @@ module RVIDecoderTable
                )
             begin
                 // extract W and I bits
-                DecodedOut.opW = opcode[3];
-                DecodedOut.opArithmetic = funct7[5];
+                ops.flags.W = opcode[3];
+                ops.flags.Arithmetic = funct7[5];
                 
                 // Arithmetic bit doesn't go to output for SUB
-                DecodedOut.lrR = opcode[5]; // R-type
-                DecodedOut.lrI = ~opcode[5]; // I-type 
+                ops.load_resource.R = opcode[5]; // R-type
+                ops.load_resource.I = ~opcode[5]; // I-type 
                 // Check for illegal instruction
                 if (
-                       ( (DecodedOut.opAr == 1'b1) && (funct3 != 3'b000) && (funct3 != 3'b101) ) // not SUB or SRA
-                    || ( (DecodedOut.lrI == 1'b1) && (funct3 == 3'b000) ) // SUBI isn't an opcode
-                    || ( (DecodedOut.opW == 1'b1) && (
-                                             (funct3 == 3'b010) // SLT
-                                          || (funct3 == 3'b011) // SLTU
-                                          || (funct3 == 3'b100) // XOR
-                                          || (funct3 == 3'b110) // OR
-                                          || (funct3 == 3'b111) // AND
-                                          )
-                        )
+                    !(
+                         ( (ops.flags.Arithmetic == 1'b1) && (funct3 != 3'b000) && (funct3 != 3'b101) ) // not SUB or SRA
+                      || ( (ops.load_resource.I == 1'b1) && (funct3 == 3'b000) ) // SUBI isn't an opcode
+                      || ( (ops.flags.W == 1'b1) && (
+                                               (funct3 == 3'b010) // SLT
+                                            || (funct3 == 3'b011) // SLTU
+                                            || (funct3 == 3'b100) // XOR
+                                            || (funct3 == 3'b110) // OR
+                                            || (funct3 == 3'b111) // AND
+                                            )
+                         )
+                    ) // not
                    )
-                begin
-                    // illegal instruction.  Don't Sel in case something else sees it as legal
-                    DecodedOut.lopIllegal = 1'b1;
-                    Sel = 1'b0;
-                end
-                else
                 begin
                     // Decode funct3
                     case (funct3)
                         3'b000:
                             // lrA determins add or subtract as per table above
-                            DecodedOut.lopAdd = 1'b1;
+                            ops.ops.Add = 1'b1;
                         3'b001 || 3'b101:
                         begin
-                            DecodedOut.lopShift = 1'b1;
+                            ops.ops.Shift = 1'b1;
                             // assign opAr = funct7(5); // Done above
                             // Right shift
-                            DecodedOut.opRightShift = (funct3 == 3'b101) ? 1'b1 : 1'b0;
+                            ops.flags.RightShift = (funct3 == 3'b101) ? 1'b1 : 1'b0;
                         end
     
                         3'b010 || 3'b011:
                         begin
-                            DecodedOut.lopCmp = 1'b1;
-                            DecodedOut.opUnsigned = (funct3 == 3'b011) ? 1'b1 : 1'b0;
+                            ops.ops.Cmp = 1'b1;
+                            ops.flags.Unsigned = (funct3 == 3'b011) ? 1'b1 : 1'b0;
                         end
 
                         3'b100:
-                            DecodedOut.lopXOR = 1'b1;
+                            ops.ops.XOR = 1'b1;
                         3'b110:
-                            DecodedOut.lopOR = 1'b1;
+                            ops.ops.OR = 1'b1;
                         3'b111:
-                            DecodedOut.lopAND = 1'b1;
+                            ops.ops.AND = 1'b1;
                     endcase
                 end 
             end
             else
             begin
-                Sel = 1'b0;
+                Sel = ops.ops.Add|ops.ops.Shift|ops.ops.Cmp|ops.ops.XOR|ops.ops.OR|ops.ops.AND;
             end
         end
     endmodule
@@ -335,47 +269,29 @@ module RVIDecoderTable
     // 1110011    1     EBREAK
     module System
     (
-        IPipelineData.DecodedOut DecodedOut,
+        input instruction_t Insn,
+        output decode_data_t DecodedOut,
         output logic Sel
     );
+        logic_ops_group_t ops;
+        assign ops = DecodedOut.ops;
+
+        logic [6:0] opcode;
+        assign opcode = Insn.r.opcode;
+        logic[2:0] funct3;
+        assign funct3 = Insn.r.funct3;
+        logic[6:0] funct7;
+        assign funct7 = Insn.r.funct7;
+
         always_comb
         begin
             // Clear state
-            DecodedOut.lopAdd = 1'b0;
-            DecodedOut.lopShift = 1'b0;
-            DecodedOut.lopCmp = 1'b0;
-            DecodedOut.lopAND = 1'b0;
-            DecodedOut.lopOR = 1'b0;
-            DecodedOut.lopXOR = 1'b0;
-            DecodedOut.lopMUL = 1'b0;
-            DecodedOut.lopDIV = 1'b0;
-            DecodedOut.lopLoad = 1'b0;
-            DecodedOut.lopStore = 1'b0;
-            DecodedOut.lopIllegal = 1'b0;
-            
-            DecodedOut.opB = 1'b0;
-            DecodedOut.opH = 1'b0;
-            DecodedOut.opW = 1'b0;
-            DecodedOut.opD = 1'b0;
-            DecodedOut.opUnsigned = 1'b0;
-            DecodedOut.opArithmetic = 1'b0;
-            DecodedOut.opRightShift = 1'b0;
-            DecodedOut.opHSU = 1'b0;
-            DecodedOut.opRemainder = 1'b0;
-    
-            DecodedOut.lrR = 1'b0;
-            DecodedOut.lrI = 1'b0;
-            DecodedOut.lrS = 1'b0;
-            DecodedOut.lrB = 1'b0;
-            DecodedOut.lrU = 1'b0;
-            DecodedOut.lrJ = 1'b0;
-            
-            Sel = 1'b0;
+            DecodedOut.bitfield = '0;
             // FIXME:  implement these
             if (
                    opcode == 7'b1110011
-                && ContextIn.insn[31:26] == '0
-                && ContextIn.insn[24:7] == '0
+                && Insn.insn[31:26] == '0
+                && Insn.insn[24:7] == '0
                )
             begin
                 // ECALL/EBREAK
@@ -386,180 +302,39 @@ module RVIDecoderTable
         end
     endmodule
 
-    DecoderPort BranchPort();
-    DecoderPort LoadStorePort();
-    DecoderPort ArithmeticPort();
-    DecoderPort SystemPort();
+    IPipelineData.DecodedOut BranchDecoded;
+    IPipelineData.DecodedOut LSDecoded;
+    IPipelineData.DecodedOut ArithmeticDecoded;
+    IPipelineData.DecodedOut SystemDecoded;
+    
+    uwire BranchSel, LSSel, ArithmeticSel, SystemSel;
 
-    Branch BranchDec(.ContextOut(BranchPort.ContextOut));
-    LoadStore LoadDec(.ContextOut(LoadStorePort.ContextOut));
-    Arithmetic ArithmeticDec(.ContextOut(LoadStorePort.ContextOut));
-    System SystemDec(.ContextOut(LoadStorePort.ContextOut));
+    Branch BranchDec(.Insn(Insn), .DecodedOut(BranchDecoded), .Sel(BranchSel));
+    LoadStore LoadDec(.Insn(Insn), .DecodedOut(LSDecoded), .Sel(LSSel));
+    Arithmetic ArithmeticDec(.Insn(Insn), .DecodedOut(ArithmeticDecoded), .Sel(ArithmeticSel));
+    System SystemDec(.Insn(Insn), .DecodedOut(SystemDecoded), .Sel(SystemSel));
 
     always_comb
     begin
         // Huge 5:1 mux
-        if (BranchDec.Sel == 1'b1)
+        if (BranchSel)
         begin
-            DecodedOut.lopAdd = BranchPort.lopAdd;
-            DecodedOut.lopShift = BranchPort.lopShift;
-            DecodedOut.lopCmp = BranchPort.lopCmp;
-            DecodedOut.lopAND = BranchPort.lopAND;
-            DecodedOut.lopOR = BranchPort.lopOR;
-            DecodedOut.lopXOR = BranchPort.lopXOR;
-            DecodedOut.lopMUL = BranchPort.lopMUL;
-            DecodedOut.lopDIV = BranchPort.lopDIV;
-            DecodedOut.lopLoad = BranchPort.lopLoad;
-            DecodedOut.lopStore = BranchPort.lopStore;
-            DecodedOut.lopIllegal = BranchPort.lopIllegal;
-            
-            DecodedOut.opB = BranchPort.opB;
-            DecodedOut.opH = BranchPort.opH;
-            DecodedOut.opW = BranchPort.opW;
-            DecodedOut.opD = BranchPort.opD;
-            DecodedOut.opUnsigned = BranchPort.opUnsigned;
-            DecodedOut.opArithmetic = BranchPort.opArithmetic;
-            DecodedOut.opRightShift = BranchPort.opRightShift;
-            DecodedOut.opHSU = BranchPort.opHSU;
-            DecodedOut.opRemainder = BranchPort.opRemainder;
-    
-            DecodedOut.lrR = BranchPort.lrR;
-            DecodedOut.lrI = BranchPort.lrI;
-            DecodedOut.lrS = BranchPort.lrS;
-            DecodedOut.lrB = BranchPort.lrB;
-            DecodedOut.lrU = BranchPort.lrU;
-            DecodedOut.lrJ = BranchPort.lrJ;
+            DecodedOut = BranchDecoded;
         end
-        else if (LoadDec.Sel == 1'b1)
+        else if (LSSel)
         begin
-            DecodedOut.lopAdd = LoadStorePort.lopAdd;
-            DecodedOut.lopShift = LoadStorePort.lopShift;
-            DecodedOut.lopCmp = LoadStorePort.lopCmp;
-            DecodedOut.lopAND = LoadStorePort.lopAND;
-            DecodedOut.lopOR = LoadStorePort.lopOR;
-            DecodedOut.lopXOR = LoadStorePort.lopXOR;
-            DecodedOut.lopMUL = LoadStorePort.lopMUL;
-            DecodedOut.lopDIV = LoadStorePort.lopDIV;
-            DecodedOut.lopLoad = LoadStorePort.lopLoad;
-            DecodedOut.lopStore = LoadStorePort.lopStore;
-            DecodedOut.lopIllegal = LoadStorePort.lopIllegal;
-            
-            DecodedOut.opB = LoadStorePort.opB;
-            DecodedOut.opH = LoadStorePort.opH;
-            DecodedOut.opW = LoadStorePort.opW;
-            DecodedOut.opD = LoadStorePort.opD;
-            DecodedOut.opUnsigned = LoadStorePort.opUnsigned;
-            DecodedOut.opArithmetic = LoadStorePort.opArithmetic;
-            DecodedOut.opRightShift = LoadStorePort.opRightShift;
-            DecodedOut.opHSU = LoadStorePort.opHSU;
-            DecodedOut.opRemainder = LoadStorePort.opRemainder;
-    
-            DecodedOut.lrR = LoadStorePort.lrR;
-            DecodedOut.lrI = LoadStorePort.lrI;
-            DecodedOut.lrS = LoadStorePort.lrS;
-            DecodedOut.lrB = LoadStorePort.lrB;
-            DecodedOut.lrU = LoadStorePort.lrU;
-            DecodedOut.lrJ = LoadStorePort.lrJ;
+            DecodedOut = LSDecoded;
         end
-        else if (ArithmeticDec.Sel == 1'b1)
+        else if (ArithmeticSel)
         begin
-            DecodedOut.lopAdd = ArithmeticPort.lopAdd;
-            DecodedOut.lopShift = ArithmeticPort.lopShift;
-            DecodedOut.lopCmp = ArithmeticPort.lopCmp;
-            DecodedOut.lopAND = ArithmeticPort.lopAND;
-            DecodedOut.lopOR = ArithmeticPort.lopOR;
-            DecodedOut.lopXOR = ArithmeticPort.lopXOR;
-            DecodedOut.lopMUL = ArithmeticPort.lopMUL;
-            DecodedOut.lopDIV = ArithmeticPort.lopDIV;
-            DecodedOut.lopLoad = ArithmeticPort.lopLoad;
-            DecodedOut.lopStore = ArithmeticPort.lopStore;
-            DecodedOut.lopIllegal = ArithmeticPort.lopIllegal;
-            
-            DecodedOut.opB = ArithmeticPort.opB;
-            DecodedOut.opH = ArithmeticPort.opH;
-            DecodedOut.opW = ArithmeticPort.opW;
-            DecodedOut.opD = ArithmeticPort.opD;
-            DecodedOut.opUnsigned = ArithmeticPort.opUnsigned;
-            DecodedOut.opArithmetic = ArithmeticPort.opArithmetic;
-            DecodedOut.opRightShift = ArithmeticPort.opRightShift;
-            DecodedOut.opHSU = ArithmeticPort.opHSU;
-            DecodedOut.opRemainder = ArithmeticPort.opRemainder;
-    
-            DecodedOut.lrR = ArithmeticPort.lrR;
-            DecodedOut.lrI = ArithmeticPort.lrI;
-            DecodedOut.lrS = ArithmeticPort.lrS;
-            DecodedOut.lrB = ArithmeticPort.lrB;
-            DecodedOut.lrU = BranchPort.lrU;
-            DecodedOut.lrJ = BranchPort.lrJ;
+            DecodedOut = ArithmeticDecoded;
         end
-        else if (SystemDec.Sel == 1'b1)
+        else if (SystemSel)
         begin
-            DecodedOut.lopAdd = SystemPort.lopAdd;
-            DecodedOut.lopShift = SystemPort.lopShift;
-            DecodedOut.lopCmp = SystemPort.lopCmp;
-            DecodedOut.lopAND = SystemPort.lopAND;
-            DecodedOut.lopOR = SystemPort.lopOR;
-            DecodedOut.lopXOR = SystemPort.lopXOR;
-            DecodedOut.lopMUL = SystemPort.lopMUL;
-            DecodedOut.lopDIV = SystemPort.lopDIV;
-            DecodedOut.lopLoad = SystemPort.lopLoad;
-            DecodedOut.lopStore = SystemPort.lopStore;
-            DecodedOut.lopIllegal = SystemPort.lopIllegal;
-            
-            DecodedOut.opB = SystemPort.opB;
-            DecodedOut.opH = SystemPort.opH;
-            DecodedOut.opW = SystemPort.opW;
-            DecodedOut.opD = SystemPort.opD;
-            DecodedOut.opUnsigned = SystemPort.opUnsigned;
-            DecodedOut.opArithmetic = SystemPort.opArithmetic;
-            DecodedOut.opRightShift = SystemPort.opRightShift;
-            DecodedOut.opHSU = SystemPort.opHSU;
-            DecodedOut.opRemainder = SystemPort.opRemainder;
-    
-            DecodedOut.lrR = SystemPort.lrR;
-            DecodedOut.lrI = SystemPort.lrI;
-            DecodedOut.lrS = SystemPort.lrS;
-            DecodedOut.lrB = SystemPort.lrB;
-            DecodedOut.lrU = SystemPort.lrU;
-            DecodedOut.lrJ = SystemPort.lrJ;
-        end
-        else
-        begin
-            // Clear state
-            DecodedOut.lopAdd = 1'b0;
-            DecodedOut.lopShift = 1'b0;
-            DecodedOut.lopCmp = 1'b0;
-            DecodedOut.lopAND = 1'b0;
-            DecodedOut.lopOR = 1'b0;
-            DecodedOut.lopXOR = 1'b0;
-            DecodedOut.lopMUL = 1'b0;
-            DecodedOut.lopDIV = 1'b0;
-            DecodedOut.lopLoad = 1'b0;
-            DecodedOut.lopStore = 1'b0;
-            DecodedOut.lopIllegal = 1'b0;
-            
-            DecodedOut.opB = 1'b0;
-            DecodedOut.opH = 1'b0;
-            DecodedOut.opW = 1'b0;
-            DecodedOut.opD = 1'b0;
-            DecodedOut.opUnsigned = 1'b0;
-            DecodedOut.opArithmetic = 1'b0;
-            DecodedOut.opRightShift = 1'b0;
-            DecodedOut.opHSU = 1'b0;
-            DecodedOut.opRemainder = 1'b0;
-    
-            DecodedOut.lrR = 1'b0;
-            DecodedOut.lrI = 1'b0;
-            DecodedOut.lrS = 1'b0;
-            DecodedOut.lrB = 1'b0;
-            DecodedOut.lrU = 1'b0;
-            DecodedOut.lrJ = 1'b0;
-            // Illegal…instruction?  No you're not going to jail, do not unplug...!
-            // We're not raising Sel anyway
-            // DecoderPort.lopIll = 1'b1;
+            DecodedOut = SystemDecoded;
         end
         
         // Only raise Sel if we decoded an instruction 
-        Sel = BranchDec.Sel | LoadDec.Sel | ArithmeticPort.Sel;
+        Sel = BranchSel | LSSel | ArithmeticSel | SystemSel;
     end
 endmodule

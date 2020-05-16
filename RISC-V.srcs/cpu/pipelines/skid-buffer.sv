@@ -203,7 +203,7 @@ module SkidBuffer
     // Assumptions about caller (the output circuit can become busy whenever the hell it wants)
     // Caller will hold strobe and data until !In.Busy
     property FV_ASSUME_CALLER_STROBE_WAITS;
-        In.Strobe && In.Busy |=> In.Strobe && (Din == $past(Din)); 
+        In.Strobe && In.Busy |=> In.Strobe && $stable(Din); // (Din == $past(Din)); 
     endproperty
 
     // Valid state changes
