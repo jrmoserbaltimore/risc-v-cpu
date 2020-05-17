@@ -29,13 +29,13 @@ module TALUTests
     logic Clk;
     realtime ClkDelay = 2.5ns; // 500MHz
     
-    IBarrelShifter #(8) Ibs();
-    BarrelShifter #(8) bs(.Shifter(Ibs.Shifter));
+    IBarrelShifter #(1) Ibs();
+    BarrelShifter #(1) bs(.Shifter(Ibs.Shifter));
 
-    IALU #(8) ALUPort();
-    BasicALU #(8) ALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
-    DSP48ALU #(8) DSPALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
-    FullALU #(8) FullALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
+    IALU #(1) ALUPort();
+    BasicALU #(1) ALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
+    DSP48ALU #(1) DSPALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
+    FullALU #(1) FullALU(.Clk(Clk), .ALUPort(ALUPort.ALU));
 
     // Pipeline tests.  Direct manipulation of the handshake.
     logic [31:0] PTA = '0;
@@ -152,11 +152,12 @@ module TALUTests
             ALUPort.Client.lopAND = 1'b0;
             ALUPort.Client.lopOR = 1'b0;
         end
+        // FIXME:  32 bits now
         ALUPort.Client.rs1 = 8'b10110101;
         ALUPort.Client.rs2 = 8'b00000011;
         
         Ibs.Shifter.Din = ALUPort.ALU.rs1; //8'b10110101;
-        Ibs.Shifter.Shift = ALUPort.ALU.rs2[$clog2(8):0]; //4'b0011;
+        Ibs.Shifter.Shift = ALUPort.ALU.rs2[$clog2(xlenbits):0]; //4'b0011;
         Ibs.Shifter.opArithmetic = ALUPort.ALU.opArithmetic;
         Ibs.Shifter.opRightShift = ALUPort.ALU.opRightShift;
     end

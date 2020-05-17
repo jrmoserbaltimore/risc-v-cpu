@@ -28,7 +28,7 @@
 
 module ControlBranch
 #(
-    XLEN = 32
+    XLEN = 2
 )
 (
     IPipelineData.ContextIn ContextIn,
@@ -37,20 +37,19 @@ module ControlBranch
     output logic Sel
 );
 
-        module Branch
-        #(
-            XLEN = 32
-        )
-        (
-            IPipelineData.ContextIn ContextIn,
-            IPipelineData.LoadedOut DataPort,
-            IALU.Client ALU,
-            output logic Sel
-        );
+    localparam xlenbits = xlen2bits(XLEN);
+    module BranchF // FIXME:  naming conflict
+    (
+        IPipelineData.ContextIn ContextIn,
+        IPipelineData.LoadedOut DataPort,
+        IALU.Client ALU,
+        output logic Sel
+    );
+        // FIXME:  Replace this trash with instruction_t
         let funct3 = ContextIn.insn[14:12];
         // Have to add a 0 onto the end because the offset is in half-words (2 bytes)
         let imm = {
-                   {(XLEN-12){ContextIn.insn[31]}},
+                   {(xlenbits-12){ContextIn.insn[31]}},
                    ContextIn.insn[7],
                    ContextIn.insn[30:25],
                    ContextIn.insn[11:8],

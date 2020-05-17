@@ -29,54 +29,47 @@ import Kerberos::*;
 
 interface IPipelineData
 #(
-    parameter XLEN = 2,
-    FetchSize = 32
+    parameter XLEN = 2
 );
+    localparam xlenbits = xlen2bits(XLEN); 
     logic [31:0] insn = '0;
-    // Extra data from Fetch, if wide bus.  Append to insn.
-    logic [FetchSize-32:0] FetchData = '0;
 
     // virtually extend misa on access: [XLEN-1:XLEN-2] is mxlen
     misa_t misa;
 
-    logic[xlen2bits(XLEN)-1:0] mstatus = '0;
+    logic[xlenbits-1:0] mstatus = '0;
     bit[1:0] ring = '0;
 
-    let sxl = mstatus[35:34];
-    let uxl = mstatus[33:32];
-    let mxl = misa.misa.mxl;
-    logic[1:0] xlen;
+    logic [1:0] sxl;
+    logic [1:0] uxl;
+    logic [1:0] mxl;
+    assign sxl = mstatus[35:34];
+    assign uxl = mstatus[33:32];
+    assign mxl = misa.misa.mxl;
     
+    logic[1:0] xlen;
+
     always_comb
     begin
         case (ring)
-            0: assign xlen = uxl;
-            1: assign xlen = sxl;
-            3: assign xlen = mxl;
+            0: xlen = uxl;
+            1: xlen = sxl;
+            2: xlen = 4; // Invalid
+            3: xlen = mxl;
         endcase
     end
 
-    logic[xlen2bits(XLEN)-1:0] rs1 = '0;
-    logic[xlen2bits(XLEN)-1:0] rs2 = '0;
-    logic[xlen2bits(XLEN)-1:0] rd = '0;
+    logic[xlenbits-1:0] rs1 = '0;
+    logic[xlenbits-1:0] rs2 = '0;
+    logic[xlenbits-1:0] rd = '0;
     // Exec stage cannot Strobe if Ready = 0
     logic Ready = '0;
 
     // XLEN can only increment/decrement by 2 (4 without RVC)
-    logic[xlen2bits(XLEN)-2:0] pc = '0;
+    logic[xlenbits-2:0] pc = '0;
 
     // Decoded information
-    decoded_data_t DecodedInstruction;
-
-    modport FetchOut
-    (
-        output FetchData
-    );
-    
-    modport FetchIn
-    (
-        input FetchData
-    );
+    decode_data_t DecodedInstruction;
 
     // Used in most stages.  Sends context information forward.
     modport ContextOut

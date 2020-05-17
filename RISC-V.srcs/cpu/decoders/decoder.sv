@@ -46,18 +46,21 @@
 
 import Kerberos::*;
 
+// Call this from a pipeline that gets it as logic
 module RVDecoder
 (
-    input instruction_t Insn,
     IPipelineData.ContextIn ContextIn,
-    IPipelineData.DecodedOut DecodedOut,
-    output logic Sel
+    output decode_data_t DecodedOut,
+    output uwire Sel
 );
-    IPipelineData.DecodedOut RVIDecoded, RVMDecoded;
+    decode_data_t RVIDecoded, RVMDecoded;
     uwire RVISel, RVMSel;
 
-    RVIDecoderTable RVIDec(.Insn(Insn), .ContextIn(ContextIn), .DecodedOut(RVIDecoded), .Sel(RVISel));
-    RVMDecoderTable RVMDec(.Insn(Insn), .ContextIn(ContextIn), .DecodedOut(RVMDecoded), .Sel(RVMSel));
+    RVIDecoderTable RVIDec(.ContextIn(ContextIn), .DecodedOut(RVIDecoded), .Sel(RVISel));
+    RVMDecoderTable RVMDec(.ContextIn(ContextIn), .DecodedOut(RVMDecoded), .Sel(RVMSel));
+
+    // No need to clear state:  only raise Sel if we decoded an instruction
+    assign Sel = RVISel | RVMSel;
 
     always_comb
     begin
@@ -69,12 +72,13 @@ module RVDecoder
         begin
             DecodedOut = RVMDecoded;
         end
+        else
+        begin
+            DecodedOut = '0;
+        end
 
         // Illegal…instruction?  No you're not going to jail, do not unplug...!
         // We're not raising Sel anyway
         // DecodedOut.ops.ops.Illegal = 1'b1;
-
-        // No need to clear state:  only raise Sel if we decoded an instruction        
-        Sel = RVISel | RVMSel;
     end
 endmodule

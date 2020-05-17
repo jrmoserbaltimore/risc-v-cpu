@@ -29,19 +29,12 @@ module RVMDecoderTable
 (
     input instruction_t Insn,
     IPipelineData.ContextIn ContextIn,
-    IPipelineData.DecodedOut DecodedOut,
-    output logic Sel
+    output decode_data_t DecodedOut,
+    output uwire Sel
 );
-    logic_ops_group_t ops;
-    assign ops = DecodedOut.ops;
-
-    logic [6:0] opcode;
-    assign opcode = Insn.r.opcode;
-    logic[2:0] funct3;
-    assign funct3 = Insn.r.funct3;
-    logic[6:0] funct7;
-    assign funct7 = Insn.r.funct7;
-    
+    // Don't decode if not supported
+    assign Sel =  ContextIn.misa.misa.M
+         & (DecodedOut.ops.ops.MUL | DecodedOut.ops.ops.DIV);
     // ----------------------------
     //  -- RV32M/RV64M operations --
     // ----------------------------
@@ -60,39 +53,36 @@ module RVMDecoderTable
         // Clear state
         DecodedOut.bitfield = '0;
         if (
-               ((opcode | "0001000") == 7'b0111011) // Only these bits on
-            && (funct7 == 7'b0000001) // Mul/Div function
+               ((Insn.r.opcode | "0001000") == 7'b0111011) // Only these bits on
+            && (Insn.r.funct7 == 7'b0000001) // Mul/Div function
             // and not the invalid MULW signed/half instructions
-            && !(opcode[3] == 1'b1 // 64-bit
-                 && funct3[1:0] != 2'b00 // H/U/HSU
-                 && funct3[2] == 1'b1) // MULW
+            && !(Insn.r.opcode[3] == 1'b1 // 64-bit
+                 && Insn.r.funct3[1:0] != 2'b00 // H/U/HSU
+                 && Insn.r.funct3[2] == 1'b1) // MULW
            )
        begin
             // Essential mask 011_011
             // This covers everything so we're good
-            Sel = 1'b1;
             // extract W bit
-            ops.flags.W = opcode[3];
-            if ( !((ops.flags.W) && (funct3[2] == 1'b0) && (funct3 != 3'b000)) )
+            DecodedOut.ops.flags.W = Insn.r.opcode[3];
+            if ( !((DecodedOut.ops.flags.W) && (Insn.r.funct3[2] == 1'b0) && (Insn.r.funct3 != 3'b000)) )
             begin
                 // funct3 = 0xx mul, 1xx div
-                ops.ops.MUL = ~funct3[2];
-                ops.ops.DIV = funct3[2];
+                DecodedOut.ops.ops.MUL = ~Insn.r.funct3[2];
+                DecodedOut.ops.ops.DIV = Insn.r.funct3[2];
                 // Half-word if MUL[H|HU|HSU]
-                ops.flags.H = (ops.ops.MUL == 1'b0 && funct3[1:0] != 2'b00) ? 1'b1 : 1'b0;
+                DecodedOut.ops.flags.H = (DecodedOut.ops.ops.MUL == 1'b0 && Insn.r.funct3[1:0] != 2'b00) ? 1'b1 : 1'b0;
                 // Unsigned
-                ops.flags.Unsigned = (
-                             (funct3[2] & funct3[0] == 1'b1) // DIVU/REMU
-                          || (funct3[2] == 1'b0 && funct3[1] == 1'b1) // MULHU/HSU
+                DecodedOut.ops.flags.Unsigned = (
+                             (Insn.r.funct3[2] & Insn.r.funct3[0] == 1'b1) // DIVU/REMU
+                          || (Insn.r.funct3[2:1] == 2'b01) // MULHU/HSU
                          ) ? 1'b1 : 1'b0;
                 // Remainder
                 //DecodedOut.opRemainder = (funct3[2:1] == 2'b11) ? 1'b1 : 1'b0;
-                ops.flags.Remainder = funct3[2] & funct3[1];
+                DecodedOut.ops.flags.Remainder = Insn.r.funct3[2] & Insn.r.funct3[1];
                 // MULHSU
-                ops.flags.HSU = (funct3 == 3'b010) ? 1'b1 : 1'b0;
+                DecodedOut.ops.flags.HSU = (Insn.r.funct3 == 3'b010) ? 1'b1 : 1'b0;
             end
         end
-        // Don't decode if not supported
-        Sel = ContextIn.misa.M & (ops.ops.MUL | ops.ops.DIV); // | something;
     end
 endmodule

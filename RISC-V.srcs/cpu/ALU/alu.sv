@@ -34,7 +34,9 @@ interface IALU
 #(
     parameter XLEN = 2
 );  
-    logic [xlen2bits(XLEN)-1:0] A, B, rs1, rs2, rd;
+    localparam xlenbits = xlen2bits(XLEN);
+
+    logic [xlenbits-1:0] A, B, rs1, rs2, rd;
     logic Equal, LessThan, LessThanUnsigned;
     
     // ----------------------
@@ -152,6 +154,7 @@ module BasicALU
     input uwire Clk,
     IALU.ALU ALUPort
 );
+    localparam xlenbits = xlen2bits(XLEN);
 
     always_comb
     begin
@@ -214,7 +217,7 @@ module BasicALU
         if (ALUPort.lopShift == 1'b1)
         begin
             assign Ibs.Shifter.Din = ALUPort.rs1;
-            assign Ibs.Shifter.Shift = ALUPort.rs2[$clog2(XLEN):0];
+            assign Ibs.Shifter.Shift = ALUPort.rs2[$clog2(xlenbits):0];
             assign Ibs.Shifter.opArithmetic = ALUPort.opArithmetic;
             assign Ibs.Shifter.opRightShift = ALUPort.opRightShift;
             assign ALUPort.rd = Ibs.Shifter.Dout;

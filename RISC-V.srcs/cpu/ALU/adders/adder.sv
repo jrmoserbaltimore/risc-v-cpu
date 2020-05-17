@@ -25,14 +25,16 @@
 
 interface IAdder
 #(
-    XLEN = 32
+    parameter XLEN = 2
 );
-    logic [XLEN-1:0] A;
-    logic [XLEN-1:0] B;
+    localparam xlenbits = xlen2bits(XLEN);
+
+    logic [xlenbits-1:0] A;
+    logic [xlenbits-1:0] B;
     logic Sub;
     logic Speculate;
     logic Error;
-    logic [XLEN-1:0] S;
+    logic [xlenbits-1:0] S;
 
     modport Adder
     (

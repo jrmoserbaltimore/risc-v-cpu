@@ -30,10 +30,9 @@ import Kerberos::*;
 
 module RVIDecoderTable
 (
-    input instruction_t Insn,
     IPipelineData.ContextIn ContextIn,
-    IPipelineData.DecodedOut DecodedOut,
-    output logic Sel
+    output decode_data_t DecodedOut,
+    output uwire Sel
 );
     // ---------------------------------
     // -- RV32I/RV64I jump and branch --
@@ -46,39 +45,33 @@ module RVIDecoderTable
     // 1ui      1100011     BLT     BGE     BLTU        BGEU
     module Branch
     (
-        input instruction_t Insn,
+        input uwire instruction_t Insn,
         output decode_data_t DecodedOut,
-        output logic Sel
+        output uwire Sel
     );
-        logic_ops_group_t ops;
-        assign ops = DecodedOut.ops;
-
-        logic [6:0] opcode;
-        assign opcode = Insn.r.opcode;
-        logic[2:0] funct3;
-        assign funct3 = Insn.r.funct3;
-
+        // Ignore all invalid or non-branch instructions
+        assign Sel =  DecodedOut.ops.load_resource.J
+                    | DecodedOut.ops.load_resource.B
+                    | DecodedOut.ops.load_resource.J;
         always_comb
         begin
             // Clear state
             DecodedOut.bitfield = '0;
             if (
-                ((opcode & 7'b1100011) == 7'b1100011)
-                && opcode[4] == 1'b0
+                ((Insn.r.opcode & 7'b1100011) == 7'b1100011)
+                && Insn.r.opcode[4] == 1'b0
                 // && Insn.r.opcode [3:2] != 2'b10 // Unnecessary due to no check for illegal instruction
                )
             begin
                 // Definitely a Branch/JAL/JALR opcode
-                ops.ops.Branch = 1'b1;
+                DecodedOut.ops.ops.Branch = 1'b1;
                 // J-type JAL
-                ops.load_resource.J = (opcode[3:2] == 2'b11) ? 1'b1 : 1'b0;
+                DecodedOut.ops.load_resource.J = (Insn.r.opcode[3:2] == 2'b11) ? 1'b1 : 1'b0;
                 // B-type Branch opcode; funct3 cannot be 010 or 011
-                ops.load_resource.B = (opcode[3:2] == 2'b00 && funct3[2:1] != 2'b01) ? 1'b1 : 1'b0;
+                DecodedOut.ops.load_resource.B = (Insn.r.opcode[3:2] == 2'b00 && Insn.r.funct3[2:1] != 2'b01) ? 1'b1 : 1'b0;
                 // I-type JALR
-                ops.load_resource.I = (opcode[3:2] == 2'b01 && funct3 == 3'b000) ? 1'b1 : 1'b0;
+                DecodedOut.ops.load_resource.I = (Insn.r.opcode[3:2] == 2'b01 && Insn.r.funct3 == 3'b000) ? 1'b1 : 1'b0;
             end
-            // Ignore all invalid or non-branch instructions
-            Sel = ops.load_resource.J | ops.load_resource.B | ops.load_resource.J;
         end
     endmodule
 
@@ -102,17 +95,12 @@ module RVIDecoderTable
     // 011      0100011     SD
     module LoadStore
     (
-        input instruction_t Insn,
+        input uwire instruction_t Insn,
         output decode_data_t DecodedOut,
-        output logic Sel
+        output uwire Sel
     );
-        logic_ops_group_t ops;
-        assign ops = DecodedOut.ops;
-
-        logic [6:0] opcode;
-        assign opcode = Insn.r.opcode;
-        logic[2:0] funct3;
-        assign funct3 = Insn.r.funct3;
+        // Only raise Sel on recognized valid load/store instruction
+        assign Sel = DecodedOut.ops.ops.Load | DecodedOut.ops.ops.Store;
 
         always_comb
         begin
@@ -120,41 +108,39 @@ module RVIDecoderTable
             DecodedOut.bitfield = '0;
             if (
                 (
-                    ((opcode | 7'b0100000) == 7'b0100011) // Load/Store
-                 || (opcode == 7'b0110111) // LUI
-                 || (opcode == 7'b0010111) // AUIPC
+                    ((Insn.r.opcode | 7'b0100000) == 7'b0100011) // Load/Store
+                 || (Insn.r.opcode == 7'b0110111) // LUI
+                 || (Insn.r.opcode == 7'b0010111) // AUIPC
                 )
-                && !((opcode[5] == 1'b1) && (funct3[2] == 1'b1)) // Undefined
+                && !((Insn.r.opcode[5] == 1'b1) && (Insn.r.funct3[2] == 1'b1)) // Undefined
                )
             begin
-                case (opcode)
+                case (Insn.r.opcode)
                 // Load/Store
-                    7'b0000011 || 7'b0100011:
+                    7'b0000011, 7'b0100011:
                     begin
                         // LWU is also "110"
-                        ops.flags.Unsigned = funct3[2];
+                        DecodedOut.ops.flags.Unsigned = Insn.r.funct3[2];
                         //64-bit LD/SD
-                        ops.flags.D = funct3[1] & funct3[0];
+                        DecodedOut.ops.flags.D = Insn.r.funct3[1] & Insn.r.funct3[0];
                         // 32-bit LD/ST
-                        ops.flags.W = funct3[1] & ~ops.flags.D;
-                        ops.flags.H = funct3[0] & ~ops.flags.D;
+                        DecodedOut.ops.flags.W = Insn.r.funct3[1] & ~DecodedOut.ops.flags.D;
+                        DecodedOut.ops.flags.H = Insn.r.funct3[0] & ~DecodedOut.ops.flags.D;
                         // Operation load/store
-                        ops.ops.Load  = ~opcode[5];
-                        ops.ops.Store = opcode[5];
-                        ops.load_resource.I      = ops.ops.Load;
-                        ops.load_resource.S      = ops.ops.Store;
+                        DecodedOut.ops.ops.Load  = ~Insn.r.opcode[5];
+                        DecodedOut.ops.ops.Store = Insn.r.opcode[5];
+                        DecodedOut.ops.load_resource.I      = DecodedOut.ops.ops.Load;
+                        DecodedOut.ops.load_resource.S      = DecodedOut.ops.ops.Store;
                     end
-                    7'b0110111 || 7'b0010111:
+                    7'b0110111, 7'b0010111:
                     begin
                         // LUI/AUIPC
-                        ops.ops.Load = 1'b1;
+                        DecodedOut.ops.ops.Load = 1'b1;
                         // U type
-                        ops.load_resource.U     = opcode[5];
+                        DecodedOut.ops.load_resource.U     = Insn.r.opcode[5];
                     end
                 endcase
             end
-            // Only raise Sel on recognized valid load/store instruction
-            Sel = ops.ops.Load | ops.ops.Store;
         end
     endmodule
 
@@ -175,86 +161,79 @@ module RVIDecoderTable
     // 0000000  111     0i1w011     AND                 ANDI
     module Arithmetic
     (
-        input instruction_t Insn,
+        input uwire instruction_t Insn,
         output decode_data_t DecodedOut,
-        output logic Sel
+        output uwire Sel
     );
-        logic_ops_group_t ops;
-        assign ops = DecodedOut.ops;
-
-        logic [6:0] opcode;
-        assign opcode = Insn.r.opcode;
-        logic[2:0] funct3;
-        assign funct3 = Insn.r.funct3;
-        logic[6:0] funct7;
-        assign funct7 = Insn.r.funct7;
-
+    
+        assign Sel =  DecodedOut.ops.ops.Add
+                    | DecodedOut.ops.ops.Shift
+                    | DecodedOut.ops.ops.Cmp
+                    | DecodedOut.ops.ops.XOR
+                    | DecodedOut.ops.ops.OR
+                    | DecodedOut.ops.ops.AND;
         always_comb
         begin
             // Clear state
             DecodedOut.bitfield = '0;
             // Not RVI Arithmetic if these aren't met
             if (
-                ((opcode & 7'b0010011) == 7'b0010011) // These bits on
-                && ((opcode & 7'b1000100) == 7'b0000000) // These bits off
+                ((Insn.r.opcode & 7'b0010011) == 7'b0010011) // These bits on
+                && ((Insn.r.opcode & 7'b1000100) == 7'b0000000) // These bits off
                      // Essential mask 0_1_011
-                && ((funct7 & 7'b1011111) == 7'b0000000)
+                && ((Insn.r.funct7 & 7'b1011111) == 7'b0000000)
                )
             begin
                 // extract W and I bits
-                ops.flags.W = opcode[3];
-                ops.flags.Arithmetic = funct7[5];
+                DecodedOut.ops.flags.W = Insn.r.opcode[3];
+                DecodedOut.ops.flags.Arithmetic = Insn.r.funct7[5];
                 
                 // Arithmetic bit doesn't go to output for SUB
-                ops.load_resource.R = opcode[5]; // R-type
-                ops.load_resource.I = ~opcode[5]; // I-type 
+                DecodedOut.ops.load_resource.R = Insn.r.opcode[5]; // R-type
+                DecodedOut.ops.load_resource.I = ~Insn.r.opcode[5]; // I-type 
                 // Check for illegal instruction
                 if (
                     !(
-                         ( (ops.flags.Arithmetic == 1'b1) && (funct3 != 3'b000) && (funct3 != 3'b101) ) // not SUB or SRA
-                      || ( (ops.load_resource.I == 1'b1) && (funct3 == 3'b000) ) // SUBI isn't an opcode
-                      || ( (ops.flags.W == 1'b1) && (
-                                               (funct3 == 3'b010) // SLT
-                                            || (funct3 == 3'b011) // SLTU
-                                            || (funct3 == 3'b100) // XOR
-                                            || (funct3 == 3'b110) // OR
-                                            || (funct3 == 3'b111) // AND
+                         ( (DecodedOut.ops.flags.Arithmetic == 1'b1) && (Insn.r.funct3 != 3'b000) && (Insn.r.funct3 != 3'b101) ) // not SUB or SRA
+                      || ( (DecodedOut.ops.load_resource.I == 1'b1) && (Insn.r.funct3 == 3'b000) ) // SUBI isn't an opcode
+                      || ( (DecodedOut.ops.flags.W == 1'b1) && (
+                                               (Insn.r.funct3 == 3'b010) // SLT
+                                            || (Insn.r.funct3 == 3'b011) // SLTU
+                                            || (Insn.r.funct3 == 3'b100) // XOR
+                                            || (Insn.r.funct3 == 3'b110) // OR
+                                            || (Insn.r.funct3 == 3'b111) // AND
                                             )
                          )
                     ) // not
                    )
                 begin
                     // Decode funct3
-                    case (funct3)
+                    case (Insn.r.funct3)
                         3'b000:
                             // lrA determins add or subtract as per table above
-                            ops.ops.Add = 1'b1;
-                        3'b001 || 3'b101:
+                            DecodedOut.ops.ops.Add = 1'b1;
+                        3'b001, 3'b101:
                         begin
-                            ops.ops.Shift = 1'b1;
+                            DecodedOut.ops.ops.Shift = 1'b1;
                             // assign opAr = funct7(5); // Done above
                             // Right shift
-                            ops.flags.RightShift = (funct3 == 3'b101) ? 1'b1 : 1'b0;
+                            DecodedOut.ops.flags.RightShift = (Insn.r.funct3 == 3'b101) ? 1'b1 : 1'b0;
                         end
     
-                        3'b010 || 3'b011:
+                        3'b010, 3'b011:
                         begin
-                            ops.ops.Cmp = 1'b1;
-                            ops.flags.Unsigned = (funct3 == 3'b011) ? 1'b1 : 1'b0;
+                            DecodedOut.ops.ops.Cmp = 1'b1;
+                            DecodedOut.ops.flags.Unsigned = (Insn.r.funct3 == 3'b011) ? 1'b1 : 1'b0;
                         end
 
                         3'b100:
-                            ops.ops.XOR = 1'b1;
+                            DecodedOut.ops.ops.XOR = 1'b1;
                         3'b110:
-                            ops.ops.OR = 1'b1;
+                            DecodedOut.ops.ops.OR = 1'b1;
                         3'b111:
-                            ops.ops.AND = 1'b1;
+                            DecodedOut.ops.ops.AND = 1'b1;
                     endcase
                 end 
-            end
-            else
-            begin
-                Sel = ops.ops.Add|ops.ops.Shift|ops.ops.Cmp|ops.ops.XOR|ops.ops.OR|ops.ops.AND;
             end
         end
     endmodule
@@ -269,19 +248,13 @@ module RVIDecoderTable
     // 1110011    1     EBREAK
     module System
     (
-        input instruction_t Insn,
+        input uwire instruction_t Insn,
         output decode_data_t DecodedOut,
-        output logic Sel
+        output uwire Sel
     );
-        logic_ops_group_t ops;
-        assign ops = DecodedOut.ops;
-
-        logic [6:0] opcode;
-        assign opcode = Insn.r.opcode;
-        logic[2:0] funct3;
-        assign funct3 = Insn.r.funct3;
-        logic[6:0] funct7;
-        assign funct7 = Insn.r.funct7;
+        assign Sel =  DecodedOut.ops.ops.Fence
+                    | DecodedOut.ops.ops.SysCall
+                    | DecodedOut.ops.ops.SysBreak;
 
         always_comb
         begin
@@ -289,30 +262,34 @@ module RVIDecoderTable
             DecodedOut.bitfield = '0;
             // FIXME:  implement these
             if (
-                   opcode == 7'b1110011
+                   Insn.r.opcode == 7'b1110011
                 && Insn.insn[31:26] == '0
                 && Insn.insn[24:7] == '0
                )
             begin
                 // ECALL/EBREAK
                 // DecodedOut.lopSysCallBreak = 1'b1;
+                DecodedOut.ops.ops.SysCall = ~Insn.insn[25];
+                DecodedOut.ops.ops.SysBreak = Insn.insn[25];
             end
-            // DecodedOut.lopFence = (opcode == 7'b0001111) ? 1'b1 : 1'b0;
-            // Sel = DecoderPort.lopFence & DecoderPort.lopSysCallBreak;
+            DecodedOut.ops.ops.Fence = (Insn.r.opcode == 7'b0001111 && Insn.r.funct3 == 3'b000) ? 1'b1 : 1'b0;
         end
     endmodule
 
-    IPipelineData.DecodedOut BranchDecoded;
-    IPipelineData.DecodedOut LSDecoded;
-    IPipelineData.DecodedOut ArithmeticDecoded;
-    IPipelineData.DecodedOut SystemDecoded;
+    decode_data_t BranchDecoded;
+    decode_data_t LSDecoded;
+    decode_data_t ArithmeticDecoded;
+    decode_data_t SystemDecoded;
     
     uwire BranchSel, LSSel, ArithmeticSel, SystemSel;
 
-    Branch BranchDec(.Insn(Insn), .DecodedOut(BranchDecoded), .Sel(BranchSel));
-    LoadStore LoadDec(.Insn(Insn), .DecodedOut(LSDecoded), .Sel(LSSel));
-    Arithmetic ArithmeticDec(.Insn(Insn), .DecodedOut(ArithmeticDecoded), .Sel(ArithmeticSel));
-    System SystemDec(.Insn(Insn), .DecodedOut(SystemDecoded), .Sel(SystemSel));
+    Branch BranchDec(.Insn(ContextIn.insn), .DecodedOut(BranchDecoded), .Sel(BranchSel));
+    LoadStore LoadDec(.Insn(ContextIn.insn), .DecodedOut(LSDecoded), .Sel(LSSel));
+    Arithmetic ArithmeticDec(.Insn(ContextIn.insn), .DecodedOut(ArithmeticDecoded), .Sel(ArithmeticSel));
+    System SystemDec(.Insn(ContextIn.insn), .DecodedOut(SystemDecoded), .Sel(SystemSel));
+
+    // Only raise Sel if we decoded an instruction 
+    assign Sel = BranchSel | LSSel | ArithmeticSel | SystemSel;
 
     always_comb
     begin
@@ -333,8 +310,9 @@ module RVIDecoderTable
         begin
             DecodedOut = SystemDecoded;
         end
-        
-        // Only raise Sel if we decoded an instruction 
-        Sel = BranchSel | LSSel | ArithmeticSel | SystemSel;
+        else
+        begin
+            DecodedOut = '0;
+        end
     end
 endmodule

@@ -27,11 +27,13 @@
 
 interface IBarrelShifter
 #(
-    parameter XLEN = 32
+    parameter XLEN = 2
 );
-    logic [XLEN-1:0] Din;
-    logic [$clog2(XLEN):0] Shift;
-    logic [XLEN-1:0] Dout;    
+    localparam xlenbits = xlen2bits(XLEN);
+
+    logic [xlenbits-1:0] Din;
+    logic [$clog2(xlenbits):0] Shift;
+    logic [xlenbits-1:0] Dout;    
     // Operation flags
     // bit 0:  Arithmetic (and Adder-Subtractor subtract)
     // bit 1:  Right shift
@@ -59,38 +61,39 @@ endinterface
 
 module BarrelShifter
 #(
-    parameter XLEN = 32
+    parameter XLEN = 2
 )
 (
     IBarrelShifter.Shifter Shifter
 );
+    localparam xlenbits = xlen2bits(XLEN);
 
     logic SignEx;
 
     always_comb
     begin
         // Sign-extend using the MSB of DN if both shifting right and arithmetic
-        SignEx = Shifter.Din[XLEN-1] & Shifter.opArithmetic & Shifter.opRightShift;
+        SignEx = Shifter.Din[xlenbits-1] & Shifter.opArithmetic & Shifter.opRightShift;
     end
 
     generate
         genvar row;
         genvar col;
         // Barrel shifter tree
-        logic [$clog2(XLEN)+1:0][XLEN-1:0] tree;
+        logic [$clog2(xlenbits)+1:0][xlenbits-1:0] tree;
 
         // input reversed?
-        for (col = 0; col <= XLEN-1; col++) begin
+        for (col = 0; col <= xlenbits-1; col++) begin
             // Reverse if right shift
             // A bunch of 2-to-1 mux to reverse on arithmetic
             assign tree[0][col] = (Shifter.opRightShift == 0)
               ? Shifter.Din[col]
-              : Shifter.Din[(XLEN-1)-col];
+              : Shifter.Din[(xlenbits-1)-col];
         end
 
-        for (row = 0; row <= $clog2(XLEN); row++) begin
+        for (row = 0; row <= $clog2(xlenbits); row++) begin
             // Row by row shift left
-            for (col = 0; col <= XLEN-1; col++) begin
+            for (col = 0; col <= xlenbits-1; col++) begin
                 if (col < 2**row) begin
                     // Set the bits being shifted in if shifting this row.
                     // if right-shift arithmetic, extend sign
@@ -104,11 +107,11 @@ module BarrelShifter
             end
         end
 
-        for (col = 0; col <= XLEN-1; col++) begin
+        for (col = 0; col <= xlenbits-1; col++) begin
             // Reverse back for right shift
             assign Shifter.Dout[col] = (Shifter.opRightShift == 0)
-              ? tree[$clog2(XLEN)+1][col]
-              : tree[$clog2(XLEN)+1][(XLEN-1)-col];
+              ? tree[$clog2(xlenbits)+1][col]
+              : tree[$clog2(xlenbits)+1][(xlenbits-1)-col];
         end
      endgenerate
 endmodule
