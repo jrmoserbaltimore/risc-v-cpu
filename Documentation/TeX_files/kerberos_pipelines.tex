@@ -1,0 +1,79 @@
+\section{Pipeline}
+
+I built the Kerberos pipeline based on excellent explanations at the ZipCPU blog \footcite{ZipCPU.Pipeline}.  Pipeline circuits interface with the skid buffer in a simpler manner than the skid buffer itself interfaces between circuits.  Note that $In.Busy = FullBuffer$
+
+\begin{table}[ht]
+    \caption{Handshake State Machine} % title of Table
+    \centering % used for centering table
+    \begin{tabular}{c c c c} % centered columns (4 columns)
+        \hline\hline
+        State & FullBuffer & Out.Strobe & DataOut \\ [0.5ex] % inserts table
+
+        \hline
+        Passthrough & 0 & In.Strobe & Din \\
+        Buffer & 1 & In.Strobe & Din \\
+        Flush & 0 & 1 & Buffer \\ [1ex]
+        \hline
+    \end{tabular}
+    \label{table:pipeline-handshake-circuit-state}
+\end{table}
+
+% Pipeline FSM.  Built by hand
+\begin{center}
+    \begin{tikzpicture}[->,>=latex,auto]
+%    \tikzstyle{every node}+=[inner sep=0pt]
+
+    \node[initial,accepting,state] (Pass) {$Pass$};
+    \node[state] (Buf) [right of=Pass, node distance=8cm] {$Buffer$};
+    \node[accepting,state] (Flush) [below left of=Buf, node distance=6cm] {$Flush$};
+
+    \path (Pass)  edge [loop above] node {!In.Strobe $||$ !Out.Busy} (Pass)
+                  edge node {In.Strobe \&\& Out.Busy} (Buf)
+          (Buf)   edge [loop above] node {Out.Busy} (Buf)
+                  edge [bend left] node {!Out.Busy} (Flush) % Bend right
+          (Flush) edge [bend left] node {In.Strobe \&\& Out.Busy} (Buf)
+                  edge [bend left] node {!In.Strobe $||$ !Out.Busy} (Pass);
+    \end{tikzpicture}
+\end{center}
+
+
+Pipelined circuits never simply propagate busy signals:  when the circuit is neither strobing to the next circuit nor processing, it becomes idle.  If the next stage becomes busy, the circuit can still process and wait for a non-busy condition.  These communicate with the pipeline through a simpler state machine with four states:  Idle, Run, Wait, and Finish.
+
+\begin{table}[ht]
+    \caption{Execution Circuit State Machine} % title of Table
+    \centering % used for centering table
+    \begin{tabular}{c c c c c} % centered columns (4 columns)
+        \hline\hline
+        State & Processing & DataReady & PipeOut.Busy & PipeIn.Busy \\ [0.5ex] % inserts table
+
+        \hline
+        Idle & 0 & 0 & X & 0 \\
+        Run & 1 & 0 & X & 1 \\
+        Wait & 0 & 1 & 1 & 1 \\
+        Finished & 0 & 1 & 0 & 0 \\ [1ex]
+        \hline
+    \end{tabular}
+    \label{table:pipeline-exec-circuit-state}
+\end{table}
+
+The circuit passes its data on in the Finish state, and is idle on the next iteration; however, the busy signal is \inlinecode{Processing || (DataReady \&\& PipeIn.Busy)}, and so signals \inlinecode{!Busy} on the cycle on which it delivers data.  The \inlinecode{SkidBuffer} itself must accept the data and, besides, is \inlinecode{!Busy} when its buffer is empty and will not magically become busy.
+
+\begin{center}
+    \begin{tikzpicture}[->,>=latex,auto]
+        %    \tikzstyle{every node}+=[inner sep=0pt]
+
+        \node[initial,accepting,state] (Idle) {Idle};
+        \node[state] (Run) [right of=Idle, node distance=8cm] {Run};
+        \node[state] (Wait) [below of=Run, node distance=5cm] {Wait};
+        \node[accepting,state] (Finish) [below of=Idle, node distance=5cm] {$Flush$};
+
+        \path (Idle)   edge [loop above] node {!PipeIn.Strobe} (Pass)
+                       edge node {PipeIn.Strobe} (Run)
+              (Run)    edge [loop right] node {!DataReady} (Run)
+                       edge node {DataReady} (Wait)
+              (Wait)   edge [loop right] node {PipeOut.Busy} (Wait)
+                       edge node {!PipeOut.Busy} (Finish)
+              (Finish) edge node {PipeIn.Strobe} (Run)
+                       edge node {!PipeIn.Strobe} (Idle);
+    \end{tikzpicture}
+\end{center}
