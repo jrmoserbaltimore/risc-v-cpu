@@ -1,0 +1,45 @@
+\begin{figure}
+    \begin{center}
+        \begin{tikzpicture}[->,>=latex,auto]
+
+        \node[initial,accepting,state,draw=blue] (Fetch) {Fetch};
+
+        \tikzstyle{every node}+=[draw=orange]
+        \node[state] (Pre-Decode1) [below of=Fetch, node distance=3cm] {Pre-Decode};
+        \node[state] (Pre-Decode2) [left of=Pre-Decode1, node distance=4cm] {Pre-Decode};
+        \node[state] (Pre-Decode3) [right of=Pre-Decode1, node distance=4cm] {Pre-Decode};
+
+        \tikzstyle{every node}+=[draw=black,fill=yellow]
+        \foreach \x in {1,2,3}
+        \node[state] (Decode\x) [below of=Pre-Decode\x, node distance=3cm] {Decode};
+
+        \tikzstyle{every node}+=[fill=white]
+
+        \node[state,fill=green] (Dispatch) [below of=Decode1, node distance=3cm] {Dispatch};
+
+        \node[state,draw=violet] (Load) [below of=Dispatch, node distance=3cm] {Load};
+
+        \tikzstyle{every node}+=[draw=violet,fill=cyan]
+
+        \node[state] (Execute1) [below of=Load, node distance=3cm] {Execute};
+        \node[state] (Execute2) [left of=Execute1, node distance=4cm] {Execute};
+        \node[state] (Execute3) [right of=Execute1, node distance=4cm] {Execute};
+
+        \tikzstyle{every node}+=[fill=white]
+        \node[state] (RMA) [below of=Execute1, node distance=3cm, text width=2cm, align=center] {Retire or Memory Access};
+
+        \foreach \x in {1,2,3}
+        \path
+            (Fetch) edge (Pre-Decode\x)
+            (Pre-Decode\x) edge (Decode\x)
+            (Decode\x) edge (Dispatch)
+            (Load) edge (Execute\x)
+            (Execute\x) edge (RMA);
+
+        \path (Dispatch) edge (Load);
+
+        \end{tikzpicture}
+        \caption{Instruction-Level Parallelism Overview}
+    \end{center}
+    \label{fig:ilp-pipeline-overview}
+\end{figure}

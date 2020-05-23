@@ -1,0 +1,130 @@
+\chapter{Pipeline}
+
+\section{Skid Buffer}
+
+I built the Kerberos skid buffer based on excellent explanations at the ZipCPU
+blog \footcite{ZipCPU.Pipeline}.  \prettyref{fig:pipeline-skid-buffer-fsm}
+shows the state machine for the skid buffer.
+\prettyref{tab:skid-buffer-handshake-state} shows information about each state;
+as noted on the ZipCPU blog, \inlinecode{$In.Busy = FullBuffer$}.
+
+\input{TeX_files/figures/skid_buffer_handshake_fsm}
+
+Pipeline stages signal $Busy$ whenever they are in the $Run$ or $Wait$ states.
+A circuit is in the $Run$ state while it is processing, and in the $Wait$ state
+when it has data sitting on its output but the next stage remains $Busy$.  When
+the circuit is neither strobing to the next circuit nor processing, it becomes
+$Idle$, and is not $Busy$ even if the next stage becomes $Busy$. This produces
+four states:  Idle, Run, Wait, and Finish, shown in
+\prettyref{tab:pipeline-exec-circuit-state}.
+
+The circuit passes its data on in the Finish state, and is idle on the next
+iteration; however, the busy signal is \inlinecode{Processing || (DataReady
+\&\& PipeIn.Busy)}, and so signals \inlinecode{!Busy} on the cycle on which it
+delivers data.  The \inlinecode{SkidBuffer} itself must accept the data and,
+besides, is \inlinecode{!Busy} when its buffer is empty and will not magically
+become busy.
+
+\input{TeX_files/figures/skid_buffer_execution_circuit_fsm}
+
+\section{Fetch}
+
+The \inlinecode{Fetch} stage obtains new instructions and passes them through
+the pipeline.  It can pass forward large amounts of data—64-byte cache
+lines—containing several instructions, along with the value of \inlinecode{pc}
+after a branch.  \inlinecode{Fetch} always retrieves and passes along a chunk
+of instruction stream aligned to its chunk size.
+
+
+\section{Pre-Decode}
+
+\inlinecode{Pre-Decode} prepares the instruction stream for
+\inlinecode{Decode}.  It receives instruction stream from \inlinecode{Fetch}
+one chunk at a time, and tracks \inlinecode{pc} to identify the current
+address.
+
+\inlinecode{Pre-Decode} converts RISC-V Compressed instructions (RVC) to normal
+RISC-V instructions.  RVC includes all opcodes with the two least-significant
+bits not equal to \inlinecode{11}, so \inlinecode{Decode} can ignore these two
+bits.  This allows cheap handling of \inlinecode{C.JAL} and
+\inlinecode{C.JALR}:  RVC passes the lower two bits of the opcode forward
+as-is, and the \inlinecode{Branch} circuit adds 2 rather than 4 to
+\inlinecode{pc} when these bits are not \inlinecode{11}.
+
+\inlinecode{Pre-Decode} separates each quadrant of RVC into an independent
+combinational circuit and selects the output via a mux.
+
+Whether expanded from RVC or passed forward verbatim, \inlinecode{Pre-Decode}
+assembles a single 32-bit instruction with its context information for
+\inlinecode{Decode}.
+
+\section{Decode}
+
+\inlinecode{Decode} converts instructions to an internal bundle of signals
+indicating the operation, width, signed or unsigned nature, and instruction
+layout type.  Like \inlinecode{Pre-Decode}, groups of logically-similar
+instructions execute as independent combinational circuits and raise a signal
+to indicate an identified instruction.
+
+Often a single opcode maps to only one or two formats, and the
+\inlinecode{funct3} and \inlinecode{funct7} fields indicate data width, sign,
+or modes such as shift-right or subtract, so these circuits are quite compact
+in gate logic.  A 5-LUT can decode an opcode, and often a 5-LUT or 6-LUT can
+look up the remaining information—often one bit in the opcode, three from
+\inlinecode{funct3}, and one from \inlinecode{funct7}.  This minimizes the
+logic used on FPGAs.
+
+\section{Dispatch}
+
+\inlinecode{Dispatch} determines if instructions have dependencies on pending
+instructions, directs register renaming, and distributes instructions across
+multiple execution units if present\footnote{Branches and jumps are always
+memory and register barriers; branches cause a stall unless branch prediction
+and speculative execution are implemented.  These require additional
+checkpointing.  Branches incur a five-cycle stall without prediction, and tight
+loops suffer significant loss in IPC.}.
+
+\section{Load}
+
+\inlinecode{Load} loads data from registers and extracts immediate values from
+most instructions.  \inlinecode{Execute} derives immediate values from
+two-register instructions, notably \inlinecode{Branch} instructions.
+
+\section{Execute}
+
+Small numbers above and below the execute operation indicate the number of
+cycles and the latency per execution unit.  For example, if the execution stage
+contains two dividers, the latency can be one cycle rather than however long it
+takes for the divider to complete.
+
+The \inlinecode{Branch} and \inlinecode{Load/Store} operations use the ALU for
+simultaneous addition and comparison.  \inlinecode{Branch} caches the
+\inlinecode{pc} and computed address of the prior interpreted branch
+instruction, using the cached target address if the branch condition and
+\\inlinecode{pc} match\footnote{Speculative adders occasionally run for two
+cycles, in which case so will \inlinecode{Load/Store}.  Tight loops use
+backwards branches and suffer a significant performance loss if the addition
+requires an extra cycle.  The ALU supplies two comparators to allow
+simultaneous comparison of \inlinecode{pc} and the branch condition.}.
+
+\inlinecode{Branch} jumps to the the cached target address if the branch
+condition and prior branch instruction match, avoiding the adder for all but
+the first iteration of a tight loop.  \inlinecode{Branch} flushes the entire
+pipeline when taking a non-predicted branch.
+
+\section{Memory Access and Cache}
+
+\inlinecode{Memory Access} also forwards register loads back through the
+pipeline.  Both \inlinecode{MemoryAccess} and \inlinecode{Fetch} connect
+directly to VC-DSR L1 cache.
+
+At higher clock rates, L1 cache hits may respond in as many as 5 cycles.  A
+single cache line holds 64 bits, enough for 16 instructions or 32 compressed
+instructions.  Vector instructions can be highly-efficient, using single
+full-width execution units to perform operations on multiple smaller-width
+data, and fail to saturate the pipeline if it's designed for more than 12
+simultaneous operations.  The pipeline can fuse 32-bit instructions in the same
+manner, when independent, although this is not implemented.
+
+Instruction fetch thus requires fast trace caching and, more importantly,
+highly-efficient branch prediction.

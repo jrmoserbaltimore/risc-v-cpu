@@ -1,0 +1,40 @@
+\afterpage{
+\begin{table}[ht]
+    \caption{Execution Circuit Handshake States} % title of Table
+    \centering % used for centering table
+    \begin{tabular}{c c c c c} % centered columns (4 columns)
+        \hline\hline
+        State & Processing & DataReady & PipeOut.Busy & PipeIn.Busy \\ [0.5ex] % inserts table
+
+        \hline
+        Idle & 0 & 0 & X & 0 \\
+        Run & 1 & 0 & X & 1 \\
+        Wait & 0 & 1 & 1 & 1 \\
+        Finished & 0 & 1 & 0 & 0 \\ [1ex]
+        \hline
+    \end{tabular}
+    \label{tab:pipeline-exec-circuit-state}
+\end{table}
+\begin{figure}
+    \begin{center}
+        \begin{tikzpicture}[->,>=latex,auto]
+            %    \tikzstyle{every node}+=[inner sep=0pt]
+
+            \node[initial,accepting,state,draw=blue,text=black] (Idle) {Idle};
+            \node[state,fill=red,text=white] (Run) [right of=Idle, node distance=8cm] {Run};
+            \node[state,fill=red,text=white] (Wait) [below of=Run, node distance=5cm] {Wait};
+            \node[accepting,state,fill=green] (Finish) [below of=Idle, node distance=5cm] {$Flush$};
+
+            \path (Idle)   edge [loop above] node {!PipeIn.Strobe} (Pass)
+            edge node {PipeIn.Strobe} (Run)
+            (Run)    edge [loop right] node {!DataReady} (Run)
+            edge node {DataReady} (Wait)
+            (Wait)   edge [loop right] node {PipeOut.Busy} (Wait)
+            edge node {!PipeOut.Busy} (Finish)
+            (Finish) edge node {PipeIn.Strobe} (Run)
+            edge node {!PipeIn.Strobe} (Idle);
+        \end{tikzpicture}
+        \caption{Execution Circuit Handshake State Machine}
+    \end{center}
+\end{figure}
+}

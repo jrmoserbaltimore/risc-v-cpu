@@ -1,0 +1,334 @@
+% vim: ts=4 sw=4 et
+\chapter{Speculative Execution}
+
+This chapter covers speculative execution.
+
+\section{Security}
+
+Speculative execution causes side effects:
+
+\begin{itemize}
+
+    \item Cache is loaded or invalidated
+
+    \item Branch prediction tables are updated
+
+\end{itemize}
+
+These side effects are usually harmless.  Runahead, for example, continues
+executing during a D\$ miss to speculatively load the cache.  Because the
+registers and memory buffer contain no privileged information, runahead can't
+access any information not available to the thread normally, and so cannot leak
+information.
+
+These guarantees fail when processors contain severe design flaws.
+
+\subsection{Impermissible Cache Loads}
+
+Meltdown leverages impermissible loads by using the data as an offset into an
+uncached memory area and searching for a statistically-fast read indicating
+cached data.  Meltdown relies on speculative execution issuing these reads
+after accessing a supervisor page.
+
+Kerberos's VC-DSR stores the ASID and permissions for each cache line's leading
+virtual page and for each virtual page synonym to the leading virtual page.
+D\$ does not provide instructions to the pipeline, so these permissions include
+only R, W, and U.  Any load or store operation must supply the ASID and whether
+it's reading or writing; adding the U bit allows Kerberos to short-circuit a
+data load in a number of ways:
+
+\begin{itemize}
+
+    \item A D\$ hit finds a permission mismatch, and D\$ returns a protection
+        fault
+
+    \item A D\$ miss finds an entry in the ART, TLB, or ASDT with a permission
+        mismatch, and D\$ returns a protection fault
+
+    \item A D\$ TLB miss causes a page table walk and finds a permission
+        mismatch, and D\$ returns a protection fault
+
+\end{itemize}
+
+\subsection{L1 Cache Address Translation}
+
+Modern caches are virtually-indexed, physically-tagged (VIPT), and need to look
+up physical addresses in certain situations.  This mechanism in particular
+caused Foreshadow and Foreshadow-NG, where a program reads arbitrary data from
+L1 cache before the tag is resolved.
+
+Kerberos uses a VIVT cache and isn't subject to this.
+
+\begin{itemize}
+
+    \item Cache line tags include ASID and, for hypervisor extensions, VMID,
+        associating them with an address space context to avoid homonyms.
+
+    \item Synonyms aren't even vaguely related to the index and tag they
+        reference, so speculation ahead of an ART lookup would be bizarre.
+
+    \item Repeated access to the same page uses a LLVP register to avoid the
+        ART and avoid the SS false positive condition; a larger SS dramatically
+        reduces the false positive rate, while speculating in the manner by
+        which Foreshadow occurs would be enormously more expensive.
+
+    \item Global pages bypass ART in that ASIDs aren't factored into their
+        synonym check.
+
+    \item Physical address information must be looked to determine if an L1
+        miss is real, and is available for L2 lookups, at which point no
+        further misreads are possible.
+
+\end{itemize}
+
+Because of all this, VC-DSR cannot function in a manner by which speculative
+cache fetches provide any use.
+
+\subsection{Store Bypass}
+
+A store buffer contains only data from the current context and cannot contain
+impermissible data.  Specter Speculative Store Bypass (SSB) leverages
+misaligned loads and stores to pull
+rogue system register read
+
+\subsection{Branch Speculation}
+
+{\bf FIXME:  very rough, mostly tacked down as scribbled notes}
+
+Spectre leverages branch misprediction and speculative execution.
+
+Fully-associative caches do not correlate the specific cache line with a
+specific address due to not being indexed.
+
+Number of evicted cache lines is abusable:
+
+\begin{itemize}
+
+    \item Mispredict branch
+
+    \item Load register
+
+    \item begin speculating using register
+
+    \item Start looping through data using register counter
+
+    \item Drop results, take correct branch
+
+    \item Loop through a previously-cached array in reverse and detect last
+        cached address
+
+\end{itemize}
+
+Speculation must wait for D\$ to accurately load the register; and further
+reads and computations require cached data.  If the data is in cache, this
+attack doesn't work; if the data is not in cache, further execution requires
+loading the data for accurate results.
+
+During a D\$ miss, Kerberos enters runahead mode, tracking valid and invalid
+register and store buffer data and using this to predict valid and invalid
+state.  Invalid state may later be proven valid.  Crucially, a predicted branch
+is speculative until computed and confirmed.
+
+One of two things will happen during runahead:  the branch will be computed and
+the runahead path will be invalidated, or the branch will be computed and the
+runahead path will be as valid as it can be in non-branching code.  If the
+branch is invalidated, all loads are not valid; if it is validated, {\em some}
+loads are valid.
+
+Runahead and speculative execution operate on this principle:  runahead skips
+loads and marks registers as not valid when the loads are not known valid,
+while speculation notates the results of operations and if they're on
+known-valid data.  In Kerberos, runahead doesn't queue up loads in D\$; rather
+it queues {\em speculative} loads and flags a validity condition in a bitfield.
+When the validity condition is proven true, D\$ performs the load.
+
+For example:  runahead passing a predicted branch will mark all queued loads as
+predicated on a validity condition.  When execution proves the branch is
+taken—such as after a register load completes and the branch requiring it is
+immediately computed to verify the prediction—runahead signals D\$ that the
+validity condition is proven.  D\$ will then evict cache lines and load data.
+
+This approach must meet the following constraints:
+
+\begin{itemize}
+
+    \item D\$ has a queue of known-valid items that {\em will} be loaded in the
+        execution path, so loading them is harmless.
+
+    \item D\$ does not load or invalidate cache lines until it has a {\em
+        valid} address to load.  This means branches leading to the read are
+        100\% determined to be taken or not taken, registers used to calculate
+        addresses are 100\% determined to contain the expected contents, and so
+        forth.
+
+    \item D\$ may issue speculative TLB and ASDT lookups for addresses not in a
+        currently-cached LVP, but won't issue these for addresses in a
+        currently-cached LVP.  These speculative lookups cannot be used until
+        {\em one} address in the referenced virtual page is made valid in L1
+        cache, as after the item is valid there is no remaining timing attack
+        against the TLB and ASDT.
+
+    \item When a constraint is proven incorrect, D\$ invalidates all related
+        queued speculative loads.
+\end{itemize}
+
+When a constraint is proven incorrect, no further action is needed except the invalidation of queued speculative loads.  This can be done by simply never validating them {\em if} runahead validity state is managed, which is necessary for this approach.
+
+The processor must indicate the correct computations for upcoming branches to runahead even when runahead isn't running; it must forward valid loads and their source addresses for runahead to compare with its predictions; and so forth.  For a lazy approach, access to a speculative D\$ load must trigger runahead, which then {\em confirms} its validity conditions in a 100\% accurate manner, updates the D\$ speculative queue, and continue runahead using the more-valid state.
+
+This approach ensures CPU behavior can leak state of which the processor was certain, but no information about state of which the processor was uncertain.  Two factors guarantee this:
+
+\begin{itemize}
+
+    \item Prefetch operations such as runahead must not evict cache data not
+        yet used by a pending operation to prefetch a cache line used in a
+        later operation—this would cause cache misses and decrease
+        performance—so software cannot identify future state by looking for
+        unexpected cache misses
+
+    \item No cached information shall be used until it is confirmed
+        non-speculative, so software can only determine future state from state
+        it already has carried out to its correct conclusion, which is what
+        software does.
+
+\end{itemize}
+
+This has odd implications, e.g. an incorrectly-predicted loop attempting to
+read through an array to extract timing from future execution will remain
+marked as speculative and then determined mispredicted, and the timing effects
+of cache speculation won't arise.  As soon as the loop is entered, the
+misprediction leads to a cache miss which triggers runahead and rapidly loads
+cache with correct data.  If the loop is small, it may validate future data and
+cause further prefetching, but by nature this can only occur with
+confirmed-valid state.
+
+This approach retains the benefits of speculation and prevents the information
+leaks brought on by branch misprediction.
+
+\section{Branch Prediction}
+
+Three-block fetch with expensive, complicated, and power-hungry L\$ can fill in
+for this when using a good branch predictor.  Modern processors use a trace
+cache to bridge between branches, following the same instructions across cache
+lines through a much simpler and faster buffer containing a program-order copy
+of the reassembled instruction stream; this performs little if any better than
+perfect branch prediction when the branch target hits the fetch stage just in
+time, but branch predictors aren't perfect.
+
+Kerberos uses a lightweight hybrid predictor consisting of an agree predictor,
+a prioritized runahead buffer, and a static predictor.  It also provides a loop
+predictor, which identifies when a backwards branch target address is greater
+than or equal to the next branch instruction; and an indirect branch predictor
+which calculates the target of \lstinline!jalr!.  Unconditional branches are
+not tracked in any predictor.
+
+Kerberos considers indirect branches computable when there are several
+instructions between \lstinline!jalr rd, n(rx)! and the most recent instruction
+setting \lstinline!rx!.  The branch predictor computes this in parallel and
+stores it into a one-entry indirect branch register.  When the indirect branch
+register
+
+--using a 16-bit parallel prefix adder tied to a carry-select high-speed increment chain—the selectable alternative is the input value and there is a mux for every 16 bits to finish roughly in time
+
+The agree predictor XORs the output of a global shared predictor and a local
+predictor to determine strong (0) or weak (1) prediction, as below.
+
+\begin{table}[htp]
+    \centering
+\begin{tabular}{|c|c|c|}
+    \hline
+    \multicolumn{2}{|c|}{Predictors} & Prediction \\
+    \hline
+    Gshare & Local & Agree \\
+    \hline
+    0 & 0 & Not Taken \\
+    \hline
+    0 & 1 & Weak Taken \\
+    \hline
+    1 & 0 & Weak Taken \\
+    \hline
+    1 & 1 & Taken \\
+    \hline
+\end{tabular}
+\caption{Agree predictor}
+\label{tab:branch-agree-predictor}
+\end{table}
+
+The static predictor uses the direction to predict the branch.  When the agree
+predictor produces a weak-taken result, the static predictor breaks the tie by
+using a direction heuristic.
+
+\begin{table}[htp]
+    \centering
+\begin{tabular}{|c|c|c|}
+    \hline
+    Agree & Direction & Prediction \\
+    \hline
+    Taken & Forward & Taken \\
+    \hline
+    Taken & Backward & Taken \\
+    \hline
+    Weak Taken & Forward & Not Taken \\
+    \hline
+    Weak Taken & Backward & Taken \\
+    \hline
+    Not Taken & Forward & Not Taken \\
+    \hline
+    Not Taken & Backward & Not Taken \\
+    \hline
+\end{tabular}
+\caption{Predictions accounting for branch direction}
+\label{tab:branch-static-hybrid}
+\end{table}
+
+Finally, the runahead predictor provides information.  Branches followed using
+values from only valid registers are considered definitely taken or not taken;
+branches followed using not-valid registers are considered weakly taken or not
+taken.
+
+\begin{table}[htp]
+    \centering
+    \begin{tabular}{|c|c|c|}
+        \hline
+        Agree & Runahead & Prediction \\
+        \hline
+        Strong Prediction & Strong Prediction & Runahead \\
+        \hline
+        Weak Taken & Strong Prediction & Runahead \\
+        \hline
+        Weak Taken & Weak Taken & Taken \\
+        \hline
+        Weak Taken & Weak Not Taken & Static \\
+        \hline
+        Strong Prediction & Weak Prediction & Agree \\
+        \hline
+        Strong Prediction & No Prediction & Agree \\
+        \hline
+        Weak Taken & No Prediction & Static \\
+        \hline
+    \end{tabular}
+\caption{Predictions including runahead}
+\end{table}
+
+\subsection{Global Shared Predictor}
+
+The global shared predictor (Gshare) uses an 8- to 12-bit Branch History Table
+(BHT) providing 256 to 4096 entries in 64 to 1024 bytes of storage.
+
+When a branch is encountered, the lower bits of \lstinline!pc<<2! are XOR'd
+with a branch history register (BHR) containing the branch history to create a
+BHT index.  The predictor updates the two-bit BHT entry at this index, shifts
+the register is shifted one left and the LSB set to the branch outcome, and the
+two-bit Smith entry in the BHT update
+
+\subsection{Two-Level Adaptive}
+
+The Yeh algorithm is an option in place of Gshare, and can be much more
+accurate with large pattern tables.  The predictor for Yeh uses a pattern
+history table (PHT) and a Per-Address History Register Table (PHRT).
+
+\input{./TeX_files/figures/branch_pred_yeh_algorithm}
+
+Whereas Gshare hashes the branch address with the branch history to look up
+history in a global BHT, Yeh looks up the branch address in a table and tracks
+its own branch history there—a local branch predictor.

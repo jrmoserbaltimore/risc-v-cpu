@@ -1,10 +1,24 @@
 \chapter{Taiga}
 
-Eric Matthews and Lesley Shannon created Taiga "to facilitate research into heterogeneous processor systems and high performance architectural features for soft processors."  Their goals included high instruction-level paralelization (ILP) at competitive operating frequencies (fMax) and area usage.
+Eric Matthews and Lesley Shannon created
+Taiga\footcite{Matthews2017}\footcite{Matthews2017b} "to facilitate research
+into heterogeneous processor systems and high performance architectural
+features for soft processors."  Their goals included high instruction-level
+paralelization (ILP) at competitive operating frequencies (fMax) and area
+usage.
 
-In 2017, Taiga ran on a Xilinx Zynq X7CZ020 FPGA at 111MHz in its minimal without multiply, divide, TLB, MMU, cache, or atomic operations, and 103MHz at full configuration.  This version also achieved 254MHz on a Xilinx Virtex UltraScale+ XCVU9P.  The critical path was the write-back data path in all except the full configuration, which was limited by access to data TLB tags.
+In 2017, Taiga ran on a Xilinx Zynq X7CZ020 FPGA at 111MHz in its minimal
+without multiply, divide, TLB, MMU, cache, or atomic operations, and 103MHz at
+full configuration.  This version also achieved 254MHz on a Xilinx Virtex
+UltraScale+ XCVU9P.  The critical path was the write-back data path in all
+except the full configuration, which was limited by access to data TLB tags.
 
-In 2019, they tested Quick-Div on a Xilinx Virtex UltraScale+ VCU118 FPGA board using an XCVU9P-L2FLGA2014E.  They needed Quick-Div to run at 373MHz to stay out of the critical path—just shy of 50\% higher fMax than they achieved on the XCVU9P in 2017.  Clearly, they have improved the processor over time.
+In 2019, they tested Quick-Div on a Xilinx Virtex UltraScale+ VCU118 FPGA board
+using an XCVU9P-L2FLGA2014E.  They needed Quick-Div to run at 373MHz to stay
+out of the critical path—just shy of 50\% higher fMax than they achieved on the
+XCVU9P in 2017.  Clearly, they have improved the processor over time.
 
-Nearly 400MHz performance, even on a modern FPGA, is impressive.  Taiga achieves clock rates comparable to iDEA, yet implements a full RV32 RISC-V processor capable of running Linux.
+Nearly 400MHz performance, even on a modern FPGA, is impressive.  Taiga
+achieves clock rates comparable to iDEA, yet implements a full RV32 RISC-V
+processor capable of running Linux.
 

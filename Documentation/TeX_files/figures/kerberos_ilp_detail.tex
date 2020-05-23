@@ -1,0 +1,108 @@
+%Instruction-level parallelism
+
+%[I]nstruction, [r-d]estination, [r-s]ource
+
+%Destination = read, source = write
+
+
+%pc=1000 I rd1, rs2  r1→r1a
+%pc=1001 I rd2, rs3  r2→r2a
+%pc=1002 I rd3, rs2  r3→r3a, !r2←r2a(1001) [r2a final dependency: 1002]
+%pc=1003 I rd4, rs2  r4→r4a, !r2←r2a(1001) [r2a final dependency: 1003]
+%pc=1004 I rd5, rs3  r5→r5a, !r3←r3a(1002) [r3a final dependency: 1004]
+%pc=1005 I rd2, rs4  r2→r2b, !r4←r4a(1001) [r4a final dependency: 1005] [r2a retired, free after pc = 1003]
+%pc=1006 I rd6, rs2  r6→r6a, !r2←r2b(1005) [r2b final dependency: 1006]
+%...
+
+
+% New instruction:  Set read dependency on current source-registers as aliased;
+%  Update final dependency on those source registers to current pc
+%
+% Rename destination register; update alias at current pc to point to destination register
+%
+% Check read dependency on non-retired data written by prior instructions
+%  If dependency, set aside
+%  Else, dispatch
+%
+% Instruction complete:  forward data back to Load; accounting back to Dispatch
+%
+% Memory access:  Buffer memory writes relative to highest executed pc; signal register checkpoint
+% to one instruction prior to lowest non-executed pc and writeback buffer to RAM
+%
+% NOTE:  Need a fast way to cross-check a set of instructions against one another in parallel.
+% Possibly by a first-select MUX to parallel evaluate interdependencies.  Multi-stage is also
+% possible for huge instruction-per-clock, but creates a longer pipeline with large IPC costs to
+% branch misprediction.
+
+
+% Horizontal?
+%
+%      1000 1001 1002 1003
+%
+% Read   r1   r1   r2   r1
+% Write  r2   r3   r4   r5
+%
+%
+
+
+
+\begin{figure}
+    \begin{center}
+        \begin{tikzpicture}[auto]
+            \node (A) at (0,0) {A};
+            \draw (A) ++(2,0) node (B) {B};
+            \draw (B) ++(2,0) node (C) {C};
+
+            \tikzstyle{every node}+=[black, thick, fill=white]
+            % AND gate
+            \node[and gate US, draw] at ($(B) + (1,-2)$) (BAnd) {};
+            \node[and gate US, draw, fill=white] at ($(C) + (1,-2)$) (CAnd) {};
+            \node[not gate US, draw, fill=white] at ($(A) + (0.5,-1)$) (ANot) {};
+            \node[not gate US, draw, fill=white] at ($(BAnd.output) + (0.5,0)$) (BNot) {};
+
+            \draw (A) ++(0,-3) node (ASel) {$Sel_A$};
+            \draw ($(BAnd.output) + (0.15,-1)$) node (BSel) {$Sel_B$};
+            \draw ($(CAnd.output) + (0.15,-1)$) node (CSel) {$Sel_C$};
+            \path
+                [black, draw, thick]
+                (A) -- (ASel)
+                (A) -- ++(0,-1) |- (ANot.input)
+                (ANot.output) -- ++(0.5,0) |- (BAnd.input 2);
+            \path
+                [black, draw, thick]
+                (B) |- (BAnd.input 1)
+                (C) -- ++(0,-1) -- ++(0.5,0) |- (CAnd.input 1)
+                (CAnd.output) -- ++(0.15,0) -- (CSel);
+            \path
+                [black, draw, thick]
+                (BAnd.output) |- (BNot.input)
+                (BAnd.output) ++(0.15,0) -- (BSel)
+                (BNot.output) -- ++(0.15,0) |- (CAnd.input 2);
+
+%\path
+%[black, draw, thick]
+%(SS) ++(2.5,2) |- (SSAnd.input 1)
+%(SS) ++(1,2) -- ($(ART) + (1,-8)$)
+%(SS) ++(0.5,3.75) -- ++(1,1) % Slash to show multi-data bus
+%(LLVP) ++(0,-5.5) |- (SSNot.input) (SSNot.output) -- ++(-0.5,0) |- (SSAnd.input 2)
+%(SSAnd.output) -- ($(ART) + (3,-8)$);
+
+        \end{tikzpicture}
+\caption{Logical find-first circuit, ripple}
+\end{center}
+\label{fig:ilp-logical-find-first}
+\end{figure}
+
+\begin{figure}
+    \begin{center}
+        \begin{tikzpicture}[->,>=latex,auto]
+            %    \tikzstyle{every node}+=[inner sep=0pt]
+            \node (Fetch) [startstop] {Fetch};
+            \node (Instruction) [io, below of=Fetch, node distance=2cm] {Instruction};
+            \node (WriteBlocked) [decision, below of=Instruction, node distance=2cm] {Depends on};
+
+        \end{tikzpicture}
+        \caption{Out-of-Order Execution Flow Chart}
+    \end{center}
+    \label{fig:ooe-flow-chart}
+\end{figure}

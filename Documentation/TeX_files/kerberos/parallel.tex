@@ -1,0 +1,185 @@
+\chapter{Parallelism}
+
+\section{Instruction Level Parallelism}
+
+Kerberos uses a parallel instruction pipeline with multiple execution units.
+The Fetch stage obtains several instructions from I\$ and fans them out to
+multiple decoder pipelines, which then fan them in to the Dispatch stage as
+shown in \prettyref{fig:ilp-pipeline-overview}.
+
+\input{TeX_files/figures/kerberos_ilp_diagram}
+
+Both $Dispatch$ and $Load$ track instruction dependencies; only $Load$ tracks
+register contents.  $Dispatch$ determines dependencies and indicates actions
+such as register renaming.
+
+When $Dispatch$ executes instructions out of order, it indicates a register ID
+from which to read each value and one to which to write any output.  $Dispatch$
+delays instructions dependent on a prior write; instructions reading a register
+altered by a future write use the prior register ID of that register.  This
+allows independent instructions to execute out of order even when using the
+same temporary registers.
+
+$Dispatch$ and $Load$ keep a table of registers, their current aliases, and a
+\inlinecode{pc} tag.  $Dispatch$ uses the current table to order instructions
+and perform renaming, using a free register FIFO.  $Load$ keeps track of
+register contents.  Each retiring instruction forwards the relevant information
+back so both can keep track of the current register file checkpoint in terms of
+\inlinecode{pc}.  The $Retire or Memory Access$ stage also tracks this
+information and buffers memory writes to stay in sync with the settled register
+checkpoint.
+
+\input{TeX_files/figures/kerberos_ilp_detail}
+
+\section{Lightweight Vector Operations}
+
+Kerberos provides lightweight vector operations using a custom user CSR.
+
+\begin{figure*}[h!]
+    {\footnotesize
+        \begin{center}
+            \begin{tabular}{U@{}cccc}
+                \instbitrange{31}{7} &
+                \instbit{6} &
+                \instbit{5}{4} &
+                \instbitrange{3}{0} \\
+                \hline
+                \multicolumn{1}{|c|}{\warl} &
+                \multicolumn{1}{c|}{E} &
+                \multicolumn{1}{c|}{M[1:0]} &
+                \multicolumn{1}{c|}{Size[3:0] (\wlrl)} \\
+                \hline
+                27 & 1 & 2 & 4 \\
+            \end{tabular}
+        \end{center}
+    }
+    \vspace{-0.1in}
+    \caption{Lightweight Vector Register ({\tt zvinxd}).}
+    \label{zvinxreg}
+\end{figure*}
+
+Setting ``Size'' to 0 disables vector operations; other values enable vector
+operations.
+
+``E'' controls RVE mode and is always supported; ``E'' is always set in RVE
+mode and cannot be unset.  When ``E'' is not set, the vector registers are x31
+and x19; when ``E'' is set, the vector registers are x15 and x11.  These are
+called the high and low vector registers, respectively, and named $vh$ and
+$vl$.
+
+``Size'' indicates the number of registers used as vector registers.  Size may
+not be greater than 12 when When ``E'' is unset, 8 when ``M'' is non-zero, and
+4 when ``E'' is set.  The high and low register sets extend from the high and
+low registers down, e.g. if E is unset and Size is 3, the vector registers are
+[x31,x30,x29] and [x19,x18,x17],  corresponding respectively.
+
+These relationships also apply to the floating point registers.
+
+When ``M'' is non-zero, x23 acts as a vector mask:  operations only apply to
+vector elements where x23[i] is 1.  When ``M'' is 01, vector operations do not
+apply to masked vector elements, and the elements are unchanged in the
+register, read on load, and written back on store; when ``M'' is 10, vector
+operations do not apply to masked elements, and masked elements are zeroed on
+load and written back on store; when ``M'' is 11, vector operations do not
+apply to masked elements, loads do not overwrite masked elements in the
+registers, and stores do not affect the memory contents targeted by masked
+elements.
+
+\begin{table}[htp]
+    \begin{small}
+        \begin{center}
+            \begin{tabular}{cl}
+                \hline
+                \multicolumn{1}{|c|}{M Register} &
+                \multicolumn{1}{c|}{Meaning} \\
+                \hline
+                \multicolumn{1}{|c|}{00} &
+                \multicolumn{1}{c|}{No masking}\\
+                \hline
+                \multicolumn{1}{|c|}{01} &
+                \multicolumn{1}{c|}{Load and store masked elements unchanged}\\
+                \hline
+                \multicolumn{1}{|c|}{10} &
+                \multicolumn{1}{c|}{Load masked elements as zero}\\
+                \hline
+                \multicolumn{1}{|c|}{11} &
+                \multicolumn{1}{c|}{Ignore:  loads and stores do not overwrite masked elements}\\
+                \hline
+            \end{tabular}
+        \end{center}
+    \end{small}
+    \caption{Accrued exception flag encoding.}
+    \label{bitdef}
+\end{table}
+
+Vector operations are instructions operating on $rd=vh$, $rs1=vh$, $rs2=vl$,
+plus load operations with $rd=vh$ or $rd=vl$.  The operations \inlinecode{add},
+\inlinecode{sub}, \inlinecode{sll}, \inlinecode{srl}, \inlinecode{sra},
+\inlinecode{and}, \inlinecode{or}, \inlinecode{xor}, \inlinecode{slt},
+\inlinecode{slti}, all ``M'' extension instructions, \inlinecode{lr} and
+\inlinecode{sc} variants, and floating point operations are valid vector
+operations; sub-word-size integer operations
+
+Kerberos executes instructions in the given form by expanding them to many
+instructions at the current operating width.  For example, after a
+\inlinecode{LH x31, offset(rs)} and with $Size=4$ and $S=1$ on RV64, an $add
+x31, x31, x19$ will add each of 16 values each 16-bits wide and packed 4 per
+register across $x19$ through $x16$ to the current values in $x31$ through
+$x28$, storing in the latter.  Other values of $rd$, $rs1$, and $rs2$ have no
+special effect.  If the load were $LW$, it would operate on the two sets of 8
+values each 32-bits wide.
+
+This allows Kerberos to load a large amount of data into two sets of registers,
+perform large numbers of calculations split across large numbers of execution
+units, and write those values back to main memory in single instructions.  When
+not holding vector data, writes to any register other than $x31$ (and for loads,
+other than $x19$ as well) and operations not between $x31$ and $x19$ with
+result stored in $x31$ operate as normal.
+
+All registers below the upper vector range are available for program logic use
+immediately after a vector instruction, as well as all between $x19$ and the
+lowest upper vector register:  the result is in the upper vector range, and likely
+is intended to be written out.  Likewise, because Load and Store only operate
+on the upper or lower vector registers, large \inlinecode{memcpy} operations can
+use 12 registers at once—96 bytes per instruction for Load and Store, which can
+bypass execution units.
+
+Program logic using lightweight vector extensions must test for vector behavior,
+possibly by executing a two-register-wide vector \inlinecode{AND} with zero in
+$x19$ and $x18$ and with non-zero loaded to $x30$, and then checking if x30 has
+changed.  If no change, program behavior must account for no vector extension.
+
+Kerberos achieves this internally by dispatching vector instructions as multiple
+regular instructions, tagged for width as normal, with the same \inlinecode{pc}
+an an indication of their vector index in the register.  Computed values are
+reassembled into full instructions.  \inlinecode{and, or, xor} can operate on
+entire registers at once with a single execution unit; \inlinecode{sll, srl,
+sra} require an extra cycle to mask the shifted-out bits.
+
+\inlinecode{add, sub} require modified adders able to produce results without
+further carry at intermediate stages, or else will occupy many execution units.
+These remove several intermediate stages, and all intermediate stages at the
+beginning of each word.  A 64-bit adder built in this manner can perform eight
+8-bit, four 16-bit, two 32-bit, and one 64-bit addition or subtraction
+simultaneously with minimal additional hardware, with the original 64-bit path
+being the critical path.
+
+These optimizations allow one vector register to operate on one execution unit,
+such that a 12 64-bit register vector addition can produce 96 additions on 12
+execution units simultaneously.  Multiple vector instructions can only occur in
+parallel in the same pipeline with SMT; on the other hand, a pipeline
+provisioned for SMT can make good optimistic use of a non-full pipeline via
+vector instructions.
+
+\section{Simultaneous Multi-Threading}
+
+Extending the above, Kerberos can include multiple register files and tracking
+data structures on a single pipeline.  $Fetch$ tags each instruction with a
+thread ID, and all computations use tables, buffers, and register data
+associated with that thread ID.
+
+The operating system can schedule multiple running processes on a single
+execution core, with some performance impacts from shared cache resources.
+Proper use of Address Space IDs (ASIDs) is critical to keep L1 cache properly
+separated.  When only one process is scheduled on a single core, all execution
+units are available for use.

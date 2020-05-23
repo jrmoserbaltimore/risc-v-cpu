@@ -1,6 +1,3 @@
-\chapter{Overview}
-
-\prettyref{fig:Kerberose-block-diagram-overview} shows a high-level overview of the Kerberos processor.
 
 \begin{figure}
 % Kerberos overview, similar to Taiga diagram
@@ -53,7 +50,7 @@
                 [black, draw, thick]
                 % Origin, relative to Fetch
                 (Decode) ++(0,-5.5) node (Order) {}
-                (Order) ++(3.75,-2) node {Order}
+                (Order) ++(4.75,-2) node {Dispatch}
                 % Box
                 (Order)
                 (DecodePL1) ++(0,-2)
@@ -135,7 +132,12 @@
               ++(1.5,0) -- ++(2.5,0)
               ++(1.5,0) -- ++(2.5,0)
               ++(1.5,0) -- ++(1.25,0)
-                -- ++(-1,-1) -- ++(-14,0) -- ++(-1,1) -- ++(1.25,0);
+                -- ++(-1,-1) -- ++(-14,0) -- ++(-1,1) -- ++(1.25,0) -- cycle;
+            \path
+                [black, draw, thick]
+                (ExMux) ++(14.5,-1)
+                node (ExMemMux) {}
+                ++(1,1) -- ++(2,0) -- ++(1,-1) -- ++(-4,0) -- cycle;
             % Execution unit pipelines
             \foreach \x in {ExALU, ExMUL, ExDIV, ExCSR}
             \path
@@ -152,19 +154,7 @@
                 (ExLS) ++(1.25,-7.5) -- ++(0,-2) -- ++(1.5,0)
               ++(0,0.5) -- ++(-1.5,0)
               ++(0,0.5) -- ++(1.5,0);
-            % Branch and forward
-            \path
-                [->,>=latex,black,draw,thick]
-                (ExMux) ++(6.75,-1)
-                -- ++(0,-1) -- ++(10,0) -- ++(0,15) -- ++(-2,0);
-            \path
-                [->,>=latex,black,draw,thick]
-                (ExMux) ++(6.75,-1) ++(10,14)
-                -- ++(0,6) -- ++(-2,0);
-            \path
-                [->,>=latex,black,draw,thick]
-                (ExBranch) ++(0,-2)
-                -- ++(-2,0) -- ++(0,30) -- ++(2,0);
+
             % Mem
             \path
                 [black, draw, thick]
@@ -173,16 +163,45 @@
                 (MemPhase) ++(8,-2) node {Memory Access}
                 % Box
                 (ExLS) ++(1.25,-9.5) -- ++(-5.25,0)
-                -- ++(0,-4) -- ++(10,0)
+                -- ++(0,-4) -- ++(10,0) -- % No pipeline down, so connect
               ++(1.5,0) -- ++(12.5,0) -- ++(0,4) -- ++(-17.25,0)
                 (MemPhase) ++(10,-3.5) node (MemPL1) {};
+            % Branch and forward
+            \path %Branch
+                [->,>=latex,black,draw,thick]
+                (ExBranch) ++(0,-2)
+                -- ++(-3,0) -- ++(0,30) -- ++(3,0);
+            \path %Branch data slash
+                [black,draw,thick]
+                (ExBranch) ++(-3.5,14.5) -- ++(1,1);
+            %%%% Branch Flushes
+            \foreach \x in {7.5, 13,18.5,24}
             \path
                 [->,>=latex,black,draw,thick]
-                (MemPhase) ++(24,-2)
-                -- ++(2,0) -- ++(0,4)
-              ++(0,-4) -- ++(0,2);
+                (ExBranch) ++(0,-1.5)
+                -- ++(-1.5,0) -- ++(0,\x) -- ++(1.5,0);
+            %%% End flushes
+            \path % Execution MUX to forward MUX
+                [black,draw,thick]
+                (ExMux) ++(6.75,-1)
+                -- ++(0,-1) -- ++(9,0) -- ++(0,1);
+            \path
+                [black,draw,thick]
+                (MemPhase) ++(24,-1)
+                -- ++(2.5,0) -- ++(0,2.5);
+            \path
+                [->,>=latex,black,draw,thick]
+                (ExMemMux) ++(2,1)
+                -- ++(0,13) -- ++(-1.75,0);
+            \path
+                [->,>=latex,black,draw,thick]
+                (ExMemMux) ++(2,1)
+                -- ++(0,19) -- ++(-1.75,0);
+            \path % Mux data slash
+                [black,draw,thick]
+                (ExMemMux) ++(1.5,7) -- ++(1,1);
             % Pipelines
-            \foreach \x in {FetchPL1, PreDecodePL1, DecodePL1, OrderPL1, LoadPL1, LoadPL2, MemPL1}
+            \foreach \x in {FetchPL1, PreDecodePL1, DecodePL1, OrderPL1, LoadPL1, LoadPL2}
             \path
                 [red, draw]
                 (\x) -- ++(0,-2.5) -- ++(1.5,0) -- ++(0,2.5)
@@ -203,9 +222,80 @@
             \path
                 [<->,>=latex,black,draw,thick]
                 (Fetch) ++(24,-2) -- ++(4,0);
+            % L1 I$ expansion
+            \path
+                [fill, draw, thick, green, opacity=0.15]
+                (ICache) ++(-16,28) node (ICache Detail) {}
+                (ICache Detail) ++(18,-28)
+                -- ++(-1,6) -- ++(0,22) -- ++(-18,0) -- ++(0,-26) -- ++(4,0) -- cycle;
+            \path
+                [black, draw, thick, fill=white]
+                (ICache Detail) ++(0,-21) node (ICache Arbiter) {}
+              ++(8,-2) node {Arbiter}
+                (ICache Arbiter)
+                -- ++(16,0) -- ++(0,-4) -- ++(-16,0) -- cycle;
+            \path
+                [black, draw, thick,fill=lightgray]
+                (ICache Arbiter) ++(0,2) node (SS) {}
+              ++(2,1) node {SS}
+                (SS)
+                -- ++(4,0) -- ++(0,2) -- ++(-4,0) -- ++(0,-2) -- cycle;
+            \path
+                [black, draw, thick, fill=yellow]
+                (SS) ++(0,17) node (ART) {}
+              ++(2,-4) node [rotate=-90] {ART}
+                (ART)
+                -- ++(4,0) -- ++(0,-8) -- ++(-4,0) -- ++(0,8) -- ++(4,0) -- cycle;
+            \path
+                [black, draw, thick, fill=yellow]
+                (ICache Arbiter) ++(6,10) node (LLVP) {}
+              ++(2,-4) node[rotate=-90] {LLVP}
+                (LLVP)
+                -- ++(4,0) -- ++(0,-8) -- ++(-4,0) -- ++(0,8) -- cycle;
+            \path
+                [black, draw, thick, fill=lime]
+                (ART) ++(12,0) node (VCache) {}
+                ++(2,-8.5) node [rotate=-90] {VCache}
+                (VCache)
+                -- ++(0,-17) -- ++(4,0) -- ++(0,17) -- ++(-4,0) -- cycle;
+            % AND gate
+            \node[and gate US, draw,rotate=90, fill=white] at ($(SS) + (3,6)$) (SSAnd) {};
+            \node[not gate US, draw, rotate=180, scale=0.5, fill=white] at ($(LLVP) + (-1,-5.5)$) (SSNot) {};
+            \path
+                [black, draw, thick]
+                (SS) ++(2.5,2) |- (SSAnd.input 1)
+                (SS) ++(1,2) -- ($(ART) + (1,-8)$)
+                (SS) ++(0.5,3.75) -- ++(1,1) % Slash to show multi-data bus
+                (LLVP) ++(0,-5.5) |- (SSNot.input) (SSNot.output) -- ++(-0.5,0) |- (SSAnd.input 2)
+                (SSAnd.output) -- ($(ART) + (3,-8)$);
+            % Mux
+            \path
+                [black, draw, thick, fill=white]
+                (ART) ++(6,0) node (Mux) {}
+                -- ++(0,-4) -- ++(1,1) -- ++(0,2) -- cycle;
+            \path
+                [black, draw, thick]
+                (LLVP) ++(0,-0.5) -- ++(-1,0) -- ++(0,6.5) -- ++(1,0);
+            \path
+                [black, draw, thick]
+                (ART) ++(4,-1) -- ++(2,0)
+                (ART) ++(2,0) -- ++(0,0.5) -- ($(Mux) + (0.75,0.5)$) -- ++(0,-1.25)
+                (Mux) ++(1,-2) -- ($(VCache) + (0,-2)$)
+                (Mux) ++(1,-2) ++(2,-0.5) -- ++(1,1); % slashfor wide data
+            \path
+                [->,>=latex,black,draw,thick]
+                (ICache Arbiter) ++(8,0) -- ($(LLVP) + (2,-8)$);
+            \path
+                [->,>=latex,black,draw,thick]
+                (ICache Arbiter) ++(8,0) -- ++(0,0.75) -- ++(-6,0) -- ++(0,1.25);
+            \path
+                [->,>=latex,black,draw,thick]
+                (VCache) ++(2,-17) -- ++(0,-2);
+
+
             % Active Synonym Detection layer
             \path
-                [green, draw, thick]
+                [blue, draw, thick]
                 (ICache) ++(8,0) node (IASD) {}
               ++(2,-13) node [black,rotate=-90] {Active Synonym Detection}
                 (IASD)
@@ -215,30 +305,30 @@
                 (ICache) ++(4,-13) -- ++(4,0);
             % ASD Expansion
             \path
-                [fill, draw, thick, green, opacity=0.15]
-                (ICache) ++(-1,28) node (IASD Detail) {}
-                (IASD Detail) ++(11,-28)
-                -- ++(-2,2) -- ++(-10,0) -- ++(0,26) -- ++(16,0) -- ++(0,-26) -- ++(-2,0) -- cycle;
+                [fill, draw, thick, blue, opacity=0.15]
+                (IASD) ++(2,28) node (IASD Detail) {}
+                (IASD Detail) ++(-1,-28)
+                -- ++(1,6) -- ++(0,22) -- ++(14,0) -- ++(0,-26) -- ++(-4,0) -- cycle;
             \path
-                [black, draw, thick]
+                [black, draw, thick, fill=white]
                 (IASD Detail) ++(1,-21) node (IASD Arbiter) {}
               ++(6,-2) node {Arbiter}
                 (IASD Arbiter)
                 -- ++(12,0) -- ++(0,-4) -- ++(-12,0) -- cycle;
             \path
-                [black, draw, thick]
+                [black, draw, thick, fill=lime]
                 (IASD Arbiter) ++(0,12) node (TLB) {}
               ++(2,-4) node [rotate=-90] {TLB}
                 (TLB)
                 -- ++(4,0) -- ++(0,-8) -- ++(-4,0) -- ++(0,8) -- cycle;
             \path
-                [black, draw, thick]
+                [black, draw, thick, fill=yellow]
                 (TLB) ++(8,0) node (ASDT) {}
               ++(2,-4) node [rotate=-90] {ASDT}
                 (ASDT)
                 -- ++(4,0) -- ++(0,-8) -- ++(-4,0) -- ++(0,8) -- cycle;
             \path
-                [black, draw, thick]
+                [black, draw, thick, fill=pink]
                 (TLB) ++(0,8) node (MMU) {}
               ++(6,-2) node {MMU}
                 (MMU)
@@ -246,7 +336,7 @@
 
             \path
                 [<->,>=latex,black,draw,thick]
-                (IASD Arbiter) ++(-4,-2) -- ++(4,0);
+                (ICache Arbiter) ++(16,-2) -- ++(11,0);
             \path
                 [<->,>=latex,black,draw,thick]
                 (IASD Arbiter) ++(12,-2) -- ++(4,0);
@@ -311,13 +401,3 @@
     \end{center}
     \label{fig:Kerberose-block-diagram-overview}
 \end{figure}
-
-\section{Memory Access and Cache}
-
-Both \inlinecode{MemoryAccess} and \inlinecode{Fetch} connect directly to VC-DSR L1 cache.   L1 is virtually-indexed, virtually-tagged (VIVT); L2 and beyond are physically-indexed, physically-tagged (PIPT).  I\$ and D\$ use separate Active Synonym Detection Tables (ASDTs).
-
-L1 only requires one cycle to access a cache line by its leading virtual address.  For potential active synonyms—comparatively rare—L1 requires two cycles if a full lookup through the Address Remapping Table (ART) adds enough time to put an L1 cache hit in the critical path.  This VC-DSR implementation uses last leading virtual page (LLVP) caching and ignores ASIDs for global pages to avoid ART look-ups via detecting them as homonyms.
-
-On miss, L1 cache accesses an Active Synonym Detection (ASD) arbiter.  If the data is in L1 cache and the address remapping table (ART) does not include the virtual page as a synonym to the leading virtual page (LVP), the Translation Lookaside Buffer (TLB) and Active Synonym Detection Table (ASDT) provide this information and replay the cache request.  The TLB may perform a page table walk through the MMU during this process and check the resulting physical page against the ASDT.
-
-When the ASDT does not contain a match, the ASD arbiter consults further memory systems, such as L2 cache or main memory.  Multi-core systems may use an L3 cache shared between cores; FPGA implementation may implement L2 or L3 on non-paging external RAM, such as 16Mib (2Mio) of 10ns static RAM arranged with 64-bit word size (around \$8).

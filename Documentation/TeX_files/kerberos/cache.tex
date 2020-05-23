@@ -1,0 +1,88 @@
+\chapter{Cache}
+
+A highly-parallel, superscalar CPU places high demand on memory bandwidth and
+latency.  Instruction fetch must supply the pipeline with operations to
+execute; load instructions must wait for memory access; branches clear out the
+pipeline, equivalent to stalling once the branch is fetched until the branch is
+taken.
+
+Cache isn't as simple as putting memory close to the pipeline.  A 64-byte cache
+line holds 16 full-width instructions or 32 RVC instructions.  Even with
+single-cycle execution, this gives plenty of L\$ cache access time—the Pentium
+Pro had a 3-cycle L1 hit latency, and modern CPUs run even as much as 5-cycle
+L\$ latency.
+
+Superscalar processors can execute more than one instruction per clock (IPC),
+demanding more from cache.  Successfully executing 32 instructions each clock
+can stall the CPU for 67\% to 80\% of its execution.  While vector instructions
+can saturate a superscalar pipeline, this only happens in tight and
+well-predicted loops with effective cache prefetching.
+
+More advanced methods are necessary.
+
+\section{Cache}
+
+Kerberos combines several cache technologies.
+
+\subsection{VC-DSR Virtually Cache}
+
+Kerberos uses Virtual Cache with Dynamic Synonym Remapping (VC-DSR), a
+virtually-indexed, virtually-tagged (VIVT) VC-DSR L1 cache.  L2 and beyond are
+physically-indexed, physically-tagged (PIPT).  I\$ and D\$ use separate Active
+Synonym Detection Tables (ASDTs).  This VC-DSR implementation uses last leading
+virtual page (LLVP) caching and ignores ASIDs for global pages to avoid ART
+look-ups via detecting them as homonyms.
+
+On miss, L1 cache accesses an Active Synonym Detection (ASD) arbiter.  If the
+data is in L1 cache and the address remapping table (ART) does not include the
+virtual page as a synonym to the leading virtual page (LVP), the Translation
+Lookaside Buffer (TLB) and Active Synonym Detection Table (ASDT) provide this
+information and replay the cache request.  The TLB may perform a page table
+walk through the MMU during this process and check the resulting physical page
+against the ASDT.
+
+When the ASDT does not contain a match, the ASD arbiter consults further memory
+systems, such as L2 cache or main memory.  Multi-core systems may use an L3
+cache shared between cores; FPGA implementation may implement L2 or L3 on
+non-paging external RAM, such as 16Mib (2Mio) of 10ns static RAM arranged with
+64-bit word size (around \$8).
+
+\subsection{Way Cache}
+
+A 4KiB cache contains 64 entries, and dividing into an 8-way set-associative
+cache places 8 entries into each index.  Kerberos uses a 16-index
+set-associative cache above 16KiB, giving 16-way set associative for 16KiB,
+64-way for 64KiB.
+
+Kerberos uses a way cache\footcite{Nicolaescu2005} for L1 cache.  The table
+below shows various cache sizes, associativity, and the size of a way cache
+sized to index all cache lines.
+
+\begin{table}[htp]
+    \centering
+    \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        Cache size & Cache Lines & Ways & Way Cache & Ratio \\
+        \hline
+        4KiB & 64 & 8 & 24 bytes & 0.59\% (\nicefrac{1}{171}) \\
+        \hline
+        4KiB & 64 & Fully-associative & 48 bytes & 1.2\% (\nicefrac{1}{85}) \\
+        \hline
+        64KiB & 1024 & 64 & 768 bytes & 1.2\% (\nicefrac{1}{85}) \\
+        \hline
+        64KiB & 1024 & Fully-associative & 1.125KiB & 1.8\% (\nicefrac{1}{57}) \\
+        \hline
+        1024KiB & 16384 & 64 & 12KiB & 0.12\% (\nicefrac{1}{85}) \\
+        \hline
+        1024KiB & 16384 & 1024 & 1.125KiB & 0.11\% (\nicefrac{1}{910}) \\
+        \hline
+        1024KiB & 16384 & Fully-associative & 26KiB & 2.6\% (\nicefrac{1}{39}) \\
+        \hline
+    \end{tabular}
+    \caption{Agree predictor}
+    \label{tab:way-cache-size}
+\end{table}
+
+For the same associativity, the way cache remains at the same ratio.  Larger
+associativity increases the number of entries in the way cache and the number
+of bits per entry.

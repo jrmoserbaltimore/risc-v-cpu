@@ -1,0 +1,136 @@
+
+\begin{figure}
+% Kerberos overview, similar to Taiga diagram
+    \begin{center}
+        \begin{tikzpicture}[scale=0.2]
+            \tikzstyle{every node}+=[inner sep=0pt]
+
+            % Global BHR
+            \path
+                 % Node and label
+                 [black,draw,thick]
+                 % Origin
+                 (0,0) node [black] (Global BHR) {}
+                 ++(6,2) node {\small{Global BHR}};
+            % Shift register
+            \foreach \x in {0,...,11}
+                \path [black, draw, thick]
+                 (Global BHR) ++(\x,0) -- ++(1,0) -- ++(0,-1) -- ++(-1,0) -- ++(0,1) -- cycle;
+             % Grey boxes
+             \foreach \x in {1,3,4,7,8,11}
+                \path [black, draw, thick, fill=gray]
+             (Global BHR) ++(\x,0) -- ++(1,0) -- ++(0,-1) -- ++(-1,0) -- ++(0,1) -- cycle;
+
+            \path
+                [black,draw,thick]
+                (Global BHR) ++(18,-4) node (PHRT) {}
+              ++(6,2) node {\small{PHRT}};
+            \path
+                [black,draw,thick]
+                (PHRT) ++(18,0) node (PT) {}
+              ++(2,2) node {\small{PT}};
+
+            \path
+                [black,draw,thick]
+                (Global BHR) ++(-3,-4) node (Local BHT) {}
+                ++(4,-6) node [rotate=90]{\small{Local BHT}};
+
+            % Local BHT
+            \path
+                [black,draw,thick]
+                (Global BHR) ++(10,-4.5) node (Global BHT) {}
+              ++(4,-6) node [rotate=90]{\small{Global BHT}};
+            \foreach \y in {0,...,11}
+                \foreach \x in {0,1,13,14,21,22,...,33,40,41}
+                  \path [black, draw, thick]
+                  (Local BHT)
+                ++($(\x,0) + -1.5*(0,\y)$)
+                  -- ++(1,0) -- ++(0,-1) -- ++(-1,0) -- ++(0,1) -- cycle;
+
+%            \foreach \y in {0,...,11}
+%                \foreach \x in {14,...,15}
+%                \path [black, draw, thick]
+%                (Local BHT)
+%              ++($(\x,0) + -1.5*(0,\y)$)
+%                -- ++(1,0) -- ++(0,-1) -- ++(-1,0) -- ++(0,1) -- cycle;
+
+            %%%%%% All this to make it look random
+            \foreach \y in {0,...,11}
+                \foreach \x in {0,1,13,14,21,22,...,33,40,41}
+                \ifthenelse{
+                   \intcalcMod{
+                     \intcalcAdd{
+                      \x}{
+                      \intcalcMul{\y}{7}
+                     }
+                   }{3}
+                > 0 \AND
+                \intcalcMod{
+                    \intcalcAdd{
+                        \y}{
+                        \intcalcMul{\x}{11}
+                    }
+                }{7} > 1
+            }{
+                  \path [black, draw, thick, fill=gray]
+                    (Local BHT)
+                ++($(\x,0) + -1.5*(0,\y)$)
+                -- ++(1,0) -- ++(0,-1) -- ++(-1,0) -- ++(0,1) -- cycle}{};
+            %%%%% Never try to read that ugly code
+
+        \path
+            [black,draw,thick]
+            (Local BHT) ++(-1,0)
+            -- ++(0,-18) -- ++(-2,4) -- ++(0,10) -- ++(2,4) -- cycle
+            (Local BHT)
+          ++(-8, 6) node {Address};
+        \path
+            [black,draw,thick]
+            (Global BHR) ++(9,-4)
+            -- ++(0,-18) -- ++(-2,4) -- ++(0,10) -- ++(2,4) -- cycle;
+        \path
+            [black,draw,thick]
+            (PHRT) ++(14,0)
+            -- ++(0,-18) -- ++(2,4) -- ++(0,10) -- ++(-2,4) -- cycle
+            (PHRT)
+          ++(8,6) node {Address}
+            (PT) ++(4,0)
+            -- ++(0,-18) -- ++(2,4) -- ++(0,10) -- ++(-2,4) -- cycle;
+        %%%% MUX traces
+        \path
+            [black,draw,thick]
+            (Local BHT) ++(-3,-9)
+            -- ++(-1,0) -- ++(0,-12)
+            (Global BHR) ++(7,-13)
+            -- ++(-1,0) -- ++(0,-12)
+            (PHRT) ++(16,-9);
+        \path
+            [black,draw,thick]
+            (Local BHT) ++(-4,6)
+            -- ++(2,0) -- ++(0,-8);
+        \path[black,draw,thick]
+            (Global BHR) ++(8,-1)
+            -- ++(0,-5);
+
+        \path
+            [black,draw,thick]
+            (PHRT) ++(16,-9)
+            -- ++(1,0) -- ++(0,12) -- ++(6.25,0) -- ++(0,-5.5)
+            (PHRT) ++(24,-9)
+            -- ++(1,0) -- ++(0,-12);
+        \path
+            [black,draw,thick]
+            (PHRT) ++(16,-9)
+            -- ++(1,0) -- ++(0,12) -- ++(6.25,0) -- ++(0,-5.5)
+            (PHRT) ++(24,-9)
+            -- ++(1,0) -- ++(0,-12);
+        \path
+            [black,draw,thick]
+            (PHRT) ++(12,6)
+            -- ++(3,0) -- ++(0,-8);
+        \end{tikzpicture}
+    \caption{Three branch predictors.  From left to right:  One-level predictor; Gshare; and two-level Yeh predictor.  12-bit wide registers are shift registers keeping the branch history.  An Agree predictor may branch when two or more different predictors agree.}
+    \end{center}
+    \label{fig:Kerberose-yeh_branch_predictor}
+\end{figure}
+

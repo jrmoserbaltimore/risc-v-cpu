@@ -1,21 +1,46 @@
 \chapter{Prior Soft Processors}
 
-Soft processors are common today, provided as synthesizable hardware definition language (HDL) code and typically deployed to field programmable gate arrays (FPGA)—although the term "FPGA" is a misnomer, as the device is a fabric of complex logic elements and not simple gates.  Modern FPGAs provide hard blocks, including arithmetic logic units (ALU), memory and peripheral bus controllers, and even entire hard processor systems (HPS) providing a complete system-on-chip (SOC).
+Soft processors are common today, provided as synthesizable hardware definition
+language (HDL) code and typically deployed to field programmable gate arrays
+(FPGA)—although the term "FPGA" is a misnomer, as the device is a fabric of
+complex logic elements and not simple gates.  Modern FPGAs provide hard blocks,
+including arithmetic logic units (ALU), memory and peripheral bus controllers,
+and even entire hard processor systems (HPS) providing a complete
+system-on-chip (SOC).
 
-Soft processors implement custom and specialized low-area designs, historic video game systems, and even large and complex RISC-V processors.  An engineering firm can convert a soft processor's HDL design into a hard processor, achieving higher clock rates and lower power usage; while an FPGA allows rapid testing of different designs to reduce relative delay and power usage, either for deployment to FPGA or for eventual translation to ASIC.
+Soft processors implement custom and specialized low-area designs, historic
+video game systems, and even large and complex RISC-V processors.  An
+engineering firm can convert a soft processor's HDL design into a hard
+processor, achieving higher clock rates and lower power usage; while an FPGA
+allows rapid testing of different designs to reduce relative delay and power
+usage, either for deployment to FPGA or for eventual translation to ASIC.
 
-Kerberos was inspired by three soft processors in particular:  ZipCPU, iDEA, and Taiga.
+Kerberos was inspired by and builds on lessons from three soft processors in
+particular:  ZipCPU, iDEA, and Taiga.
 
 \section{ZipCPU}
-Gisselquist Technology, LLC maintains a blog at ZipCPU.com discussing CPU design and their own ZipCPU.  This CPU uses its own instruction set architecture (ISA), aiming for small size, low power, and fast execution.  Gisselquist licenses ZipCPU under GPLv3, with commercial licensing options.
+
+Gisselquist Technology, LLC maintains a blog\footcite{ZipCPU.Blog} discussing
+CPU design and their own ZipCPU.  ZipCPU uses its own instruction set
+architecture (ISA), aiming for small size, low power, and fast execution.
+Gisselquist licenses ZipCPU under GPLv3, with commercial licensing options.
 
 \section{iDEA}
-As is typical of anyone who dedicates time, energy, and passion to a subject, HuiYan Cheah has produced an enormous amount of research and practical work in the field of digital design.  Cheah's Ph.D thesis, "The iDEA Architecture-Focused FPGA Soft Processor," thoroughly documents a soft processor designed to obtain maximum performance from Xilinx FPGAs.  Like ZipCPU, iDEA implements a custom ISA, in this case heavily leveraging the DSP48E1 ALU block provided in Xilinx FPGAs.
 
-Cheah achieved a 453MHz clock rate on both a Xilinx Virtex-6 XC6VLX240T-2 and an Artix-7.
+As is typical of anyone who dedicates time, energy, and passion to a subject,
+HuiYan Cheah has produced an enormous amount of research and practical work in
+the field of digital design.  Cheah's Ph.D thesis, "The iDEA
+Architecture-Focused FPGA Soft Processor," thoroughly documents a soft
+processor designed to obtain maximum performance from Xilinx FPGAs.  Like
+ZipCPU, iDEA implements a custom ISA, in this case heavily leveraging the
+DSP48E1 ALU block provided in Xilinx FPGAs.
+
+Cheah achieved a 453MHz clock rate on both a Xilinx Virtex-6 XC6VLX240T-2 and
+an Artix-7.
 
 \section{Taiga}
 
-Matthews and Shannon released Taiga, a RISC-V implementation, under the Apache License 2.0.  They detail Taiga in their paper, "TAIGA: A new RISC-V soft-processor framework enabling high performance CPU architectural features."  Unfortunately, precious little detail is given about Taiga itself outside the actual published HDL.
-
-Kerberos borrows from Taiga where possible, but must provide its own implementation:  Kerberos is MIT licensed with a seven-year copyright sunset.
+Matthews and Shannon released Taiga, a RISC-V implementation, under the Apache
+License 2.0.  They present a high-level overview of Taiga in two
+papers\footcite{Matthews2017}\footcite{Matthews2017b}; little deeper detail is
+given about Taiga outside the actual published HDL.
